@@ -1,3 +1,4 @@
+import inspect
 import logging
 from pathlib import Path
 from unittest.mock import patch
@@ -12,13 +13,14 @@ def test_main_logs_profile_and_commands(tmp_path: Path, caplog: pytest.LogCaptur
     f.write_text('[profile]\nname = "test"\n\n[press]\nfire = "space"\n')
 
     def close_coro(coro: object, **_: object) -> None:
-        import inspect
         if inspect.iscoroutine(coro):
             coro.close()
 
-    with patch("sys.argv", ["tank-controls", "--config", str(f), "--dry-run"]), \
-         patch("tank_controls.main.asyncio.run", side_effect=close_coro), \
-         caplog.at_level(logging.INFO):
+    with (
+        patch("sys.argv", ["tank-controls", "--config", str(f), "--dry-run"]),
+        patch("tank_controls.main.asyncio.run", side_effect=close_coro),
+        caplog.at_level(logging.INFO),
+    ):
         main()
     assert "Loaded profile: test" in caplog.text
     assert "Listening for: fire" in caplog.text
