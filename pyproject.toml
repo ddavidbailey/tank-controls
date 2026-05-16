@@ -11,6 +11,7 @@ dependencies = [
     "sounddevice",
     "pynput",
     "numpy",
+    "setuptools<71",
 ]
 
 [dependency-groups]
