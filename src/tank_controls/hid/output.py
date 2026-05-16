@@ -1,7 +1,7 @@
 import logging
 import time
 
-from pynput.keyboard import Controller, Key
+from pynput.keyboard import Controller, Key  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 

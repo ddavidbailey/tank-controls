@@ -25,28 +25,34 @@ def test_combo_presses_modifier_before_key_releases_in_reverse():
 
 
 def test_cooldown_blocks_immediate_repeat():
-    with patch("tank_controls.hid.output.Controller"), \
-         patch("tank_controls.hid.output.time") as mock_time:
+    with (
+        patch("tank_controls.hid.output.Controller"),
+        patch("tank_controls.hid.output.time") as mock_time,
+    ):
         mock_time.monotonic.side_effect = [0.0, 0.1]
         presser = KeyPresser(cooldown_ms=200)
-        presser.press("fire", "space")   # first press at t=0.0
+        presser.press("fire", "space")  # first press at t=0.0
         result = presser.press("fire", "space")  # second at t=0.1 → 100ms < 200ms
         assert result is False
 
 
 def test_cooldown_allows_press_after_elapsed():
-    with patch("tank_controls.hid.output.Controller"), \
-         patch("tank_controls.hid.output.time") as mock_time:
+    with (
+        patch("tank_controls.hid.output.Controller"),
+        patch("tank_controls.hid.output.time") as mock_time,
+    ):
         mock_time.monotonic.side_effect = [0.0, 0.3]
         presser = KeyPresser(cooldown_ms=200)
-        presser.press("fire", "space")   # first press at t=0.0
+        presser.press("fire", "space")  # first press at t=0.0
         result = presser.press("fire", "space")  # second at t=0.3 → 300ms > 200ms
         assert result is True
 
 
 def test_cooldown_is_independent_per_action():
-    with patch("tank_controls.hid.output.Controller"), \
-         patch("tank_controls.hid.output.time") as mock_time:
+    with (
+        patch("tank_controls.hid.output.Controller"),
+        patch("tank_controls.hid.output.time") as mock_time,
+    ):
         mock_time.monotonic.side_effect = [0.0, 0.05]
         presser = KeyPresser(cooldown_ms=200)
         presser.press("fire", "space")

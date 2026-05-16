@@ -1,4 +1,5 @@
 import pytest
+
 from tank_controls.config.errors import (
     ConfigError,
     DoubleBoundKeyError,

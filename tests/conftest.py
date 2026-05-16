@@ -12,6 +12,7 @@ pynput_mock.keyboard.Key = MagicMock()
 # Import Key from real module so tests can use pynput.keyboard.Key
 try:
     from pynput.keyboard import Key
+
     pynput_mock.keyboard.Key = Key
 except ImportError:
     pass
