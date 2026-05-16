@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tank_controls.config.errors import ConfigError
+from tank_controls.config.errors import ConfigError, EmptyKeybindError
 from tank_controls.config.loader import Config, load_config
 
 
@@ -45,4 +45,25 @@ def test_invalid_toml_raises(tmp_path: Path) -> None:
     f = tmp_path / "bad.toml"
     f.write_text("not valid toml ][")
     with pytest.raises(ConfigError, match="Invalid TOML"):
+        load_config(f)
+
+
+def test_empty_press_keybind_raises(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nfire = ""\n')
+    with pytest.raises(EmptyKeybindError, match="fire"):
+        load_config(f)
+
+
+def test_empty_hold_keybind_raises(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[hold]\nthrottle_up = ""\n')
+    with pytest.raises(EmptyKeybindError, match="throttle_up"):
+        load_config(f)
+
+
+def test_empty_mouse_keybind_raises(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[mouse]\nturret_traverse = ""\n')
+    with pytest.raises(EmptyKeybindError, match="turret_traverse"):
         load_config(f)
