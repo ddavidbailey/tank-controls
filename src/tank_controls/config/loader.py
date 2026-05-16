@@ -22,6 +22,7 @@ class VoiceConfig:
     vad_aggressiveness: int = 2
     match_threshold: float = 0.8
     action_cooldown_ms: int = 200
+    model: str = "tiny.en"
 
 
 @dataclass
@@ -58,6 +59,7 @@ def load_config(path: Path) -> Config:
         vad_aggressiveness=int(voice_raw.get("vad_aggressiveness", 2)),
         match_threshold=float(voice_raw.get("match_threshold", 0.8)),
         action_cooldown_ms=int(voice_raw.get("action_cooldown_ms", 200)),
+        model=str(voice_raw.get("model", "tiny.en")),
     )
     return Config(profile_name=profile_name, press=press, hold=hold, mouse=mouse, voice=voice)
 

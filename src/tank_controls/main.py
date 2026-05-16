@@ -81,7 +81,7 @@ async def _run_pipeline(config: Config, dry_run: bool) -> None:
     capture = AudioCapture(raw_queue, loop)
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        model = WhisperModel(config.voice.model, device="cpu", compute_type="int8")
         stt = SpeechToText(model, executor)
         try:
             stream = capture.start()

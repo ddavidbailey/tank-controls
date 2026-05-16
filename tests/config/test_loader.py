@@ -133,6 +133,14 @@ def test_voice_config_defaults_when_section_absent(tmp_path: Path) -> None:
     assert config.voice.vad_aggressiveness == 2
     assert config.voice.match_threshold == 0.8
     assert config.voice.action_cooldown_ms == 200
+    assert config.voice.model == "tiny.en"
+
+
+def test_voice_config_model_parsed(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('[profile]\nname = "test"\n[voice]\nmodel = "base.en"\n')
+    config = load_config(cfg)
+    assert config.voice.model == "base.en"
 
 
 def test_voice_config_values_parsed(tmp_path: Path) -> None:
