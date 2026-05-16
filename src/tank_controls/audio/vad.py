@@ -1,5 +1,6 @@
 import logging
-import webrtcvad
+
+import webrtcvad  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
