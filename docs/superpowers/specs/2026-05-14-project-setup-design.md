@@ -13,16 +13,16 @@
 
 ### Runtime
 
-| Package | Purpose |
-|---------|---------|
-| `vosk` | Local STT, fixed-phrase vocabulary for tank commands |
-| `webrtcvad` | Voice activity detection |
-| `mediapipe` | Two-hand landmarks (max_hands=2) |
-| `opencv-python` | Camera capture and frame preprocessing |
-| `sounddevice` | Audio capture |
-| `pynput` | HID output (keyboard/mouse synthesis) |
+| Package           | Purpose                                        |
+| ----------------- | ---------------------------------------------- |
+| `faster-whisper`  | Local STT (tiny/base int8)                     |
+| `webrtcvad`       | Voice activity detection                       |
+| `mediapipe`       | Two-hand landmarks (max_hands=2)               |
+| `opencv-python`   | Camera capture and frame preprocessing         |
+| `sounddevice`     | Audio capture                                  |
+| `pynput`          | HID output (keyboard/mouse synthesis)          |
 
-Note: `faster-whisper` is the planned STT upgrade path if Vosk accuracy is insufficient. Not installed in v1 to keep RAM footprint small.
+Note: `vosk` was the original STT choice but has no macOS arm64 wheels on PyPI. `faster-whisper` is the replacement.
 
 ### Dev (dependency-groups)
 
@@ -36,7 +36,7 @@ tank-controls/
 │   └── tank_controls/
 │       ├── __init__.py
 │       ├── main.py          # entry point, wires pipeline together
-│       ├── audio/           # AudioCapture, VAD, STT (Vosk)
+│       ├── audio/           # AudioCapture, VAD, STT (faster-whisper)
 │       │   └── __init__.py
 │       ├── vision/          # FrameCapture, MediaPipe two-hand landmarks, gesture→axes
 │       │   └── __init__.py
