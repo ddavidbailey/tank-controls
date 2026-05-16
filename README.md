@@ -34,12 +34,6 @@ If prototypes later hit hard CPU/RAM ceilings, hot paths can be revisited (nativ
 - **Cloud inference** for speech or vision in the default architecture (adds latency, privacy, and network dependency).
 - **Gameplay automation beyond input remapping** (no autopilot aimbots, no telemetry-driven cheats). This document assumes **fair control mapping** only; **compliance with game Terms of Service and anticheat expectations is your responsibility**—verify before use, especially online.
 
-## Why not “just Docker it” for Mac and Windows?
-
-Do **not** rely on Docker (or similar) for the **runtime loop** that needs simultaneous low-latency access to microphone, webcam, optional GPU acceleration, and OS-level input injection into a host game. Containers complicate device passthrough and rarely simplify HID injection.
-
-Use a **normal per-OS install** (virtualenv, `uv`, Poetry, etc.). A devcontainer is fine **only** for ancillary tasks (lint/tests) if it does not claim to replace full camera/mic/game integration.
-
 ## High-level architecture
 
 ```mermaid
@@ -67,12 +61,11 @@ flowchart LR
 
 | Concern | Library / approach | Notes |
 | --- | --- | --- |
-| Speech (local, RAM-conscious default) | [Vosk](https://alphacephei.com/vosk/) + voice activity detection | Fixed vocabulary of tank commands; lowest steady-state RAM among practical local options here. |
-| Speech (upgrade path) | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) tiny/base + int8 + short windows | Use only if Vosk accuracy is insufficient; higher memory and compute cost. |
-| Voice activity | `webrtcvad` or in-graph VAD where available | Reduces pointless decoding; improves perceived latency. |
+| Speech | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) tiny/base + int8 | CTranslate2-based; macOS arm64 compatible. `lean` profile uses tiny on CPU; `rich` profile uses base, optionally GPU. |
+| Voice activity | `webrtcvad` | Reduces pointless decoding; improves perceived latency. |
 | Two hands / arms | [MediaPipe](https://developers.google.com/mediapipe) Hand Landmarker (**max hands = 2**) | Primary component for **simultaneous** two-hand landmarks. Add holistic / full **pose** later only if needed (extra CPU/RAM). |
 | Video capture and preprocessing | `opencv-python` (`cv2.VideoCapture`, resize, color convert, optional crop) | **Not** used as the main “hand tracker”: OpenCV does not provide turnkey two-hand skeletal tracking for this use case. It feeds frames into MediaPipe and keeps capture cheap. |
-| Audio capture | `sounddevice` or `PyAudio` | Tune buffer size vs latency. |
+| Audio capture | `sounddevice` | Tune buffer size vs latency. |
 | Control output (baseline) | `pynput` | Maps to your keybinds; requires macOS permissions (below). |
 | Control output (optional, Windows) | [vJoy](http://vjoystick.sourceforge.net/site/) + `pyvjoy` | Useful if you need analog-like axes instead of key chording; **Windows-only** in practice for this stack. |
 | Concurrency | `asyncio` with bounded queues and/or threads | Keep capture, inference, and HID emission decoupled with backpressure. |
@@ -107,8 +100,8 @@ War Thunder is the primary workload. The helper should default to a **`lean` pro
 
 | Profile | Speech | Vision | Inference placement | When to use |
 | --- | --- | --- | --- | --- |
-| **`lean` (default)** | Vosk + fixed phrases | 640×480 (or similar), 15–30 FPS, **MediaPipe two hands** | Prefer **CPU** for the helper to preserve **VRAM** for the game | Everyday play on limited RAM |
-| **`rich`** | faster-whisper tiny/base, int8 | Higher resolution/FPS, still **two hands**; optional heavier preprocessing | Optional **GPU** for STT | Spare headroom, desktop tuning sessions |
+| **`lean` (default)** | faster-whisper **tiny**, int8 | 640×480 (or similar), 15–30 FPS, **MediaPipe two hands** | Prefer **CPU** for the helper to preserve **VRAM** for the game | Everyday play on limited RAM |
+| **`rich`** | faster-whisper **base**, int8 | Higher resolution/FPS, still **two hands**; optional heavier preprocessing | Optional **GPU** for STT | Spare headroom, desktop tuning sessions |
 
 ### Additional mitigations
 
@@ -129,7 +122,7 @@ War Thunder is the primary workload. The helper should default to a **`lean` pro
 ## Phased roadmap
 
 1. **Phase A — Mapping and logging** — Read config for War Thunder keybinds; log “would press key X” without sending input; prove config UX.
-2. **Phase B — Voice** — Vosk path first; phrase list for weapons and discrete actions; push-to-talk optional.
+2. **Phase B — Voice** — faster-whisper phrase list for weapons and discrete actions; push-to-talk optional.
 3. **Phase C — Vision** — MediaPipe **two-hand** tracking; map per-hand gestures to drive/turret (and other) controls with smoothing, deadzones, and stable **left/right** assignment.
 4. **Phase D — Fusion and safety** — Merge modalities, debounce conflicts, **global disable**, and clear on-screen or audio feedback for state (armed phrase, gesture mode).
 
@@ -143,10 +136,3 @@ Record answers here as you decide them.
 - [ ] Turret control style: **relative** nudges vs **absolute** screen mapping.
 - [ ] Online vs test range only; **ToS** stance and feature gating.
 - [ ] Push-to-talk key vs always-listening window vs wake phrase (latency vs convenience vs RAM).
-
-## Revision log
-
-| Date | Change |
-| --- | --- |
-| 2026-05-14 | Initial README: Python stack, multimodal design, local-only constraints, RAM profiles, platform notes, roadmap. |
-| 2026-05-14 | **Two-hand** requirement; clarified **OpenCV** (capture/preprocess) vs **MediaPipe** (two-hand landmarks); profiles and roadmap aligned. |
