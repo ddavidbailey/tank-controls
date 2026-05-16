@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from tank_controls.config.errors import ConfigError, EmptyKeybindError
-from tank_controls.config.loader import Config, load_config
+from tank_controls.config.errors import ConfigError, EmptyKeybindError, InvalidKeybindError
+from tank_controls.config.loader import load_config
 
 
 def test_load_full_config(tmp_path: Path) -> None:
@@ -67,3 +67,41 @@ def test_empty_mouse_keybind_raises(tmp_path: Path) -> None:
     f.write_text('[mouse]\nturret_traverse = ""\n')
     with pytest.raises(EmptyKeybindError, match="turret_traverse"):
         load_config(f)
+
+
+def test_invalid_press_keybind_raises(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nfire = "ctrl+q9z"\n')
+    with pytest.raises(InvalidKeybindError, match="fire"):
+        load_config(f)
+
+
+def test_valid_modifier_combo_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nextinguisher = "ctrl+6"\n')
+    assert load_config(f).press == {"extinguisher": "ctrl+6"}
+
+
+def test_valid_named_key_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nfire = "space"\n')
+    assert load_config(f).press == {"fire": "space"}
+
+
+def test_valid_f_key_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nrange_finder = "f2"\n')
+    assert load_config(f).press == {"range_finder": "f2"}
+
+
+def test_invalid_mouse_value_raises(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[mouse]\nturret_traverse = "absolute"\n')
+    with pytest.raises(InvalidKeybindError, match="turret_traverse"):
+        load_config(f)
+
+
+def test_valid_mouse_relative_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[mouse]\nturret_traverse = "relative"\n')
+    assert load_config(f).mouse == {"turret_traverse": "relative"}
