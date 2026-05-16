@@ -4,7 +4,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from tank_controls.config.errors import ConfigError, EmptyKeybindError, InvalidKeybindError
+from tank_controls.config.errors import (
+    ConfigError,
+    DoubleBoundKeyError,
+    EmptyKeybindError,
+    InvalidKeybindError,
+)
 
 _VALID_KEY = r"(?:[a-z0-9]|space|enter|tab|escape|f(?:[1-9]|1[0-2]))"
 _VALID_MODIFIER = r"(?:ctrl|alt|shift)"
@@ -38,6 +43,7 @@ def load_config(path: Path) -> Config:
     _validate_key_section(press, "press")
     _validate_key_section(hold, "hold")
     _validate_mouse_section(mouse)
+    _validate_no_cross_section_duplicates(press, hold, mouse)
 
     return Config(profile_name=profile_name, press=press, hold=hold, mouse=mouse)
 
@@ -65,3 +71,18 @@ def _validate_mouse_section(section: dict[str, str]) -> None:
             raise InvalidKeybindError(
                 f'[mouse] {action} = "{binding}" — expected one of: {valid_values}'
             )
+
+
+def _validate_no_cross_section_duplicates(
+    press: dict[str, str],
+    hold: dict[str, str],
+    mouse: dict[str, str],
+) -> None:
+    seen: dict[str, str] = {}
+    for section_name, section in (("press", press), ("hold", hold), ("mouse", mouse)):
+        for action, key in section.items():
+            if key in seen:
+                raise DoubleBoundKeyError(
+                    f"Key '{key}' is bound in both [{seen[key]}] and [{section_name}]"
+                )
+            seen[key] = section_name

@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from tank_controls.config.errors import ConfigError, EmptyKeybindError, InvalidKeybindError
+from tank_controls.config.errors import (
+    ConfigError,
+    DoubleBoundKeyError,
+    EmptyKeybindError,
+    InvalidKeybindError,
+)
 from tank_controls.config.loader import load_config
 
 
@@ -105,3 +110,17 @@ def test_valid_mouse_relative_accepted(tmp_path: Path) -> None:
     f = tmp_path / "config.toml"
     f.write_text('[mouse]\nturret_traverse = "relative"\n')
     assert load_config(f).mouse == {"turret_traverse": "relative"}
+
+
+def test_cross_section_duplicate_raises(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nfire = "space"\n\n[hold]\nthrottle_up = "space"\n')
+    with pytest.raises(DoubleBoundKeyError, match="space"):
+        load_config(f)
+
+
+def test_same_key_in_same_section_is_toml_error(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nfire = "space"\nfire = "enter"\n')
+    with pytest.raises(ConfigError):
+        load_config(f)
