@@ -10,7 +10,6 @@ dependencies = [
     "opencv-python",
     "sounddevice",
     "pynput",
-    "setuptools",
 ]
 
 [dependency-groups]

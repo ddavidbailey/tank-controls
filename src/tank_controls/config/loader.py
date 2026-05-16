@@ -65,9 +65,7 @@ def load_config(path: Path) -> Config:
 def _validate_key_section(section: dict[str, str], section_name: str) -> None:
     for action, binding in section.items():
         if not binding:
-            raise EmptyKeybindError(
-                f'[{section_name}] {action} = "" — key binding cannot be empty'
-            )
+            raise EmptyKeybindError(f'[{section_name}] {action} = "" — key binding cannot be empty')
         if not _BINDING_RE.match(binding):
             raise InvalidKeybindError(
                 f'[{section_name}] {action} = "{binding}" — not a recognised key or combo'
@@ -77,9 +75,7 @@ def _validate_key_section(section: dict[str, str], section_name: str) -> None:
 def _validate_mouse_section(section: dict[str, str]) -> None:
     for action, binding in section.items():
         if not binding:
-            raise EmptyKeybindError(
-                f'[mouse] {action} = "" — key binding cannot be empty'
-            )
+            raise EmptyKeybindError(f'[mouse] {action} = "" — key binding cannot be empty')
         if binding not in _MOUSE_VALID_VALUES:
             valid_values = ", ".join(sorted(_MOUSE_VALID_VALUES))
             raise InvalidKeybindError(
