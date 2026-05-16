@@ -17,11 +17,7 @@ class SpeechToText:
         self._executor = executor
 
     async def transcribe(self, frames: list[bytes]) -> str:
-        audio = (
-            np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
-        )
+        audio = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
         loop = asyncio.get_running_loop()
-        text: str = await loop.run_in_executor(
-            self._executor, _transcribe_sync, self._model, audio
-        )
+        text: str = await loop.run_in_executor(self._executor, _transcribe_sync, self._model, audio)
         return re.sub(r"[^\w\s]", "", text).lower().strip()

@@ -1485,6 +1485,7 @@ dependencies = [
     { name = "mediapipe" },
     { name = "opencv-python" },
     { name = "pynput" },
+    { name = "setuptools" },
     { name = "sounddevice" },
     { name = "webrtcvad" },
 ]
@@ -1503,6 +1504,7 @@ requires-dist = [
     { name = "mediapipe" },
     { name = "opencv-python" },
     { name = "pynput" },
+    { name = "setuptools", specifier = ">=82.0.1" },
     { name = "sounddevice" },
     { name = "webrtcvad" },
 ]
