@@ -124,3 +124,24 @@ def test_same_key_in_same_section_is_toml_error(tmp_path: Path) -> None:
     f.write_text('[press]\nfire = "space"\nfire = "enter"\n')
     with pytest.raises(ConfigError):
         load_config(f)
+
+
+def test_voice_config_defaults_when_section_absent(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('[profile]\nname = "test"\n')
+    config = load_config(cfg)
+    assert config.voice.vad_aggressiveness == 2
+    assert config.voice.match_threshold == 0.8
+    assert config.voice.action_cooldown_ms == 200
+
+
+def test_voice_config_values_parsed(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        '[profile]\nname = "test"\n'
+        "[voice]\nvad_aggressiveness = 3\nmatch_threshold = 0.9\naction_cooldown_ms = 150\n"
+    )
+    config = load_config(cfg)
+    assert config.voice.vad_aggressiveness == 3
+    assert config.voice.match_threshold == 0.9
+    assert config.voice.action_cooldown_ms == 150

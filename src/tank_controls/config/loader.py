@@ -18,11 +18,19 @@ _MOUSE_VALID_VALUES: frozenset[str] = frozenset({"relative"})
 
 
 @dataclass
+class VoiceConfig:
+    vad_aggressiveness: int = 2
+    match_threshold: float = 0.8
+    action_cooldown_ms: int = 200
+
+
+@dataclass
 class Config:
     profile_name: str
     press: dict[str, str] = field(default_factory=dict)
     hold: dict[str, str] = field(default_factory=dict)
     mouse: dict[str, str] = field(default_factory=dict)
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
 
 
 def load_config(path: Path) -> Config:
@@ -45,7 +53,13 @@ def load_config(path: Path) -> Config:
     _validate_mouse_section(mouse)
     _validate_no_cross_section_duplicates(press, hold, mouse)
 
-    return Config(profile_name=profile_name, press=press, hold=hold, mouse=mouse)
+    voice_raw: dict[str, Any] = data.get("voice", {})
+    voice = VoiceConfig(
+        vad_aggressiveness=int(voice_raw.get("vad_aggressiveness", 2)),
+        match_threshold=float(voice_raw.get("match_threshold", 0.8)),
+        action_cooldown_ms=int(voice_raw.get("action_cooldown_ms", 200)),
+    )
+    return Config(profile_name=profile_name, press=press, hold=hold, mouse=mouse, voice=voice)
 
 
 def _validate_key_section(section: dict[str, str], section_name: str) -> None:
