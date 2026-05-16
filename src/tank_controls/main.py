@@ -135,13 +135,6 @@ def main() -> None:
         ", ".join(k.replace("_", " ") for k in config.press),
     )
 
-    for action, key in config.press.items():
-        log_action(action, "press", key)
-    for action, key in config.hold.items():
-        log_action(action, "hold", key)
-    for action, binding in config.mouse.items():
-        log_action(action, "mouse_move", binding)
-
     try:
         asyncio.run(_run_pipeline(config, args.dry_run))
     except KeyboardInterrupt:
