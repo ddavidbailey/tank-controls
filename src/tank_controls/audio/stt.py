@@ -10,7 +10,7 @@ def _transcribe_sync(model_path: str, audio: np.ndarray, initial_prompt: str) ->
     result = mlx_whisper.transcribe(
         audio,
         path_or_hf_repo=model_path,
-        initial_prompt=initial_prompt or None,
+        initial_prompt=initial_prompt,
         condition_on_previous_text=False,
     )
     return str(result.get("text", ""))
