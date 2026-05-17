@@ -61,7 +61,7 @@ flowchart LR
 
 | Concern | Library / approach | Notes |
 | --- | --- | --- |
-| Speech | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) tiny/base + int8 | CTranslate2-based; macOS arm64 compatible. `lean` profile uses tiny on CPU; `rich` profile uses base, optionally GPU. |
+| Speech | [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) tiny/base + Metal GPU | Apple Silicon only; uses MLX for Metal GPU acceleration. `lean` profile uses `whisper-tiny.en-mlx`; `rich` profile uses `whisper-base.en-mlx`. Falls back to faster-whisper on non-Apple-Silicon targets. |
 | Voice activity | `webrtcvad` | Reduces pointless decoding; improves perceived latency. |
 | Two hands / arms | [MediaPipe](https://developers.google.com/mediapipe) Hand Landmarker (**max hands = 2**) | Primary component for **simultaneous** two-hand landmarks. Add holistic / full **pose** later only if needed (extra CPU/RAM). |
 | Video capture and preprocessing | `opencv-python` (`cv2.VideoCapture`, resize, color convert, optional crop) | **Not** used as the main “hand tracker”: OpenCV does not provide turnkey two-hand skeletal tracking for this use case. It feeds frames into MediaPipe and keeps capture cheap. |
@@ -100,8 +100,8 @@ War Thunder is the primary workload. The helper should default to a **`lean` pro
 
 | Profile | Speech | Vision | Inference placement | When to use |
 | --- | --- | --- | --- | --- |
-| **`lean` (default)** | faster-whisper **tiny**, int8 | 640×480 (or similar), 15–30 FPS, **MediaPipe two hands** | Prefer **CPU** for the helper to preserve **VRAM** for the game | Everyday play on limited RAM |
-| **`rich`** | faster-whisper **base**, int8 | Higher resolution/FPS, still **two hands**; optional heavier preprocessing | Optional **GPU** for STT | Spare headroom, desktop tuning sessions |
+| **`lean` (default)** | mlx-whisper **tiny.en** (Metal GPU) | 640×480 (or similar), 15–30 FPS, **MediaPipe two hands** | Apple Silicon GPU for STT, preserving VRAM for the game | Everyday play |
+| **`rich`** | mlx-whisper **base.en** (Metal GPU) | Higher resolution/FPS, still **two hands**; optional heavier preprocessing | Apple Silicon GPU | Spare headroom, tuning sessions |
 
 ### Additional mitigations
 
@@ -122,7 +122,7 @@ War Thunder is the primary workload. The helper should default to a **`lean` pro
 ## Phased roadmap
 
 1. **Phase A — Mapping and logging** — Read config for War Thunder keybinds; log “would press key X” without sending input; prove config UX.
-2. **Phase B — Voice** — faster-whisper phrase list for weapons and discrete actions; push-to-talk optional.
+2. **Phase B — Voice** — mlx-whisper always-listening, fixed command vocabulary mapped to `[press]` config actions, real HID output. ✓
 3. **Phase C — Vision** — MediaPipe **two-hand** tracking; map per-hand gestures to drive/turret (and other) controls with smoothing, deadzones, and stable **left/right** assignment.
 4. **Phase D — Fusion and safety** — Merge modalities, debounce conflicts, **global disable**, and clear on-screen or audio feedback for state (armed phrase, gesture mode).
 

@@ -20,14 +20,14 @@ Mic → AudioCapture → VAD → LocalSTT → IntentMap ──┐
 Cam → FrameCapture → TwoHandLandmarks → GestureAxes ┘
 ```
 
-- **LocalSTT**: Vosk (default lean profile) or faster-whisper tiny/base int8 (rich profile)
+- **LocalSTT**: mlx-whisper (Apple Silicon, Metal GPU) — model name configurable in `[voice]` TOML; faster-whisper is the fallback for non-Apple-Silicon targets
 - **Two-hand landmarks**: MediaPipe Hand Landmarker with `max_hands=2` — OpenCV handles capture and preprocessing only, not hand tracking
 - **HID output**: `pynput` (baseline, cross-platform); `pyvjoy` + vJoy optional on Windows for analog axes
 - **Concurrency**: `asyncio` with bounded queues and/or threads; keep capture, inference, and HID emission decoupled with backpressure
 
 ## Key technical constraints
 
-- **RAM discipline**: War Thunder is the primary workload. Default to the `lean` profile (Vosk, 640×480 @ 15–30 FPS, CPU inference) to preserve VRAM for the game.
+- **RAM discipline**: War Thunder is the primary workload. Default to the `lean` profile (mlx-whisper tiny, 640×480 @ 15–30 FPS) to preserve VRAM for the game.
 - **Two hands always**: both hands tracked concurrently. Don't reduce to one-hand unless adding an explicit optional fallback mode.
 - **No cloud**: all STT and vision inference runs on-device.
 - **macOS permissions**: `pynput` requires Accessibility (and likely Input Monitoring) granted in System Settings — prompt and document this clearly.
@@ -36,13 +36,13 @@ Cam → FrameCapture → TwoHandLandmarks → GestureAxes ┘
 
 | Profile | Speech | Vision | Inference |
 |---------|--------|--------|-----------|
-| `lean` (default) | Vosk + fixed phrases | 640×480, 15–30 FPS | CPU (preserve VRAM) |
-| `rich` | faster-whisper tiny/base int8 | Higher res/FPS | Optional GPU for STT |
+| `lean` (default) | mlx-whisper tiny.en (Metal GPU) | 640×480, 15–30 FPS | Apple Silicon GPU |
+| `rich` | mlx-whisper base.en (Metal GPU) | Higher res/FPS | Apple Silicon GPU |
 
 ## Phased roadmap
 
 - **Phase A**: Config reader + dry-run logger (no actual input sent)
-- **Phase B**: Voice — Vosk phrase list, push-to-talk optional
+- **Phase B**: Voice — mlx-whisper always-listening, fixed command vocabulary, real HID output ✓
 - **Phase C**: Vision — MediaPipe two-hand tracking, per-hand gesture → drive/turret axes
 - **Phase D**: Fusion — merge modalities, debounce, global panic-disable hotkey, on-screen/audio state feedback
 

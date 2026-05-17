@@ -37,7 +37,7 @@ sounddevice callback
       ▼  VAD coroutine
  [speech_queue]   ← complete utterance (concatenated frames)
       │
-      ▼  STT coroutine (faster-whisper in ThreadPoolExecutor)
+      ▼  STT coroutine (mlx-whisper in ThreadPoolExecutor)
  [intent_queue]   ← matched (action_name, key_binding) pair
       │
       ▼  HID coroutine
@@ -50,7 +50,7 @@ sounddevice callback
 
 - Opens a mono `sounddevice.RawInputStream` at **16 000 Hz, int16**
   - 16 kHz satisfies webrtcvad's required sample rates (8 000 / 16 000 / 32 000 Hz)
-  - No resampling needed — faster-whisper also expects 16 kHz
+  - No resampling needed — mlx-whisper also expects 16 kHz
 - Blocksize: **320 samples** (20 ms at 16 kHz) — the frame duration webrtcvad requires
 - sounddevice fires its callback on a background thread; frames are forwarded to `raw_queue` via `loop.call_soon_threadsafe` so the asyncio event loop is never touched from the wrong thread
 - Capture stage owns no logic — it is a pure data mover
@@ -76,7 +76,7 @@ sounddevice callback
 
 ## Speech-to-text (`audio/stt.py`)
 
-- Model loaded once at startup: `WhisperModel("tiny", device="cpu", compute_type="int8")`
+- Model loaded on first transcription call via `mlx_whisper.transcribe(path_or_hf_repo=...)` and cached by the mlx-whisper library. Default: `mlx-community/whisper-tiny.en-mlx`
 - Receives a complete utterance (list of raw int16 frames) from `speech_queue`
 - Concatenates frames into a single NumPy array and normalises to float32 in `[-1.0, 1.0]`
 - Transcription runs in a `ThreadPoolExecutor` via `loop.run_in_executor` so the event loop stays live during inference
@@ -120,7 +120,7 @@ sounddevice callback
 
 1. Parse `--config` and optional `--dry-run` flag via argparse
 2. Load config via `loader.py` — exit on `ConfigError` as before
-3. Load `WhisperModel` once
+3. Instantiate `SpeechToText` with the model path from config (mlx-whisper loads and caches the model on first use)
 4. Start the asyncio event loop with all four coroutines running concurrently via `asyncio.gather`
 5. `--dry-run` flag substitutes the HID coroutine with the existing `log_action` dry-run logger — useful for verifying the full voice pipeline without macOS Accessibility permissions
 
@@ -132,7 +132,7 @@ sounddevice callback
 |---|---|
 | Mic not found / permission denied | Log error at startup, exit with code 1 |
 | webrtcvad frame size mismatch | Caught per-frame, logged at WARNING, frame discarded |
-| faster-whisper model not downloaded | Propagates as exception at startup, logged, exit code 1 |
+| mlx-whisper model not cached / download fails | Propagates as exception at startup, logged, exit code 1 |
 | Empty transcription | Silently discarded, pipeline continues |
 | No intent match | Silently discarded, pipeline continues |
 | pynput Accessibility denied | Logged with guidance, action dropped, pipeline continues |

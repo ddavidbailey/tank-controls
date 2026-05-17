@@ -15,14 +15,14 @@
 
 | Package           | Purpose                                        |
 | ----------------- | ---------------------------------------------- |
-| `faster-whisper`  | Local STT (tiny/base int8)                     |
+| `mlx-whisper`     | Local STT via Metal GPU (Apple Silicon)        |
 | `webrtcvad`       | Voice activity detection                       |
 | `mediapipe`       | Two-hand landmarks (max_hands=2)               |
 | `opencv-python`   | Camera capture and frame preprocessing         |
 | `sounddevice`     | Audio capture                                  |
 | `pynput`          | HID output (keyboard/mouse synthesis)          |
 
-Note: `vosk` was the original STT choice but has no macOS arm64 wheels on PyPI. `faster-whisper` is the replacement.
+Note: `vosk` was dropped (no macOS arm64 wheels). `faster-whisper` was the initial replacement but switched to `mlx-whisper` for Metal GPU acceleration on Apple Silicon after testing showed better latency.
 
 ### Dev (dependency-groups)
 
@@ -36,7 +36,7 @@ tank-controls/
 │   └── tank_controls/
 │       ├── __init__.py
 │       ├── main.py          # entry point, wires pipeline together
-│       ├── audio/           # AudioCapture, VAD, STT (faster-whisper)
+│       ├── audio/           # AudioCapture, VAD, STT (mlx-whisper)
 │       │   └── __init__.py
 │       ├── vision/          # FrameCapture, MediaPipe two-hand landmarks, gesture→axes
 │       │   └── __init__.py
