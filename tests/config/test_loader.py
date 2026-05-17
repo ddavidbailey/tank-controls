@@ -133,7 +133,7 @@ def test_voice_config_defaults_when_section_absent(tmp_path: Path) -> None:
     assert config.voice.vad_aggressiveness == 2
     assert config.voice.match_threshold == 0.8
     assert config.voice.action_cooldown_ms == 200
-    assert config.voice.model == "tiny.en"
+    assert config.voice.model == "mlx-community/whisper-tiny.en-mlx"
 
 
 def test_voice_config_model_parsed(tmp_path: Path) -> None:

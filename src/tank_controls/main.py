@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import sounddevice as sd  # type: ignore[import-untyped]
-from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
 from tank_controls.audio.capture import AudioCapture
 from tank_controls.audio.intent import match_intent
@@ -82,8 +81,7 @@ async def _run_pipeline(config: Config, dry_run: bool) -> None:
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        model = WhisperModel(str(config.voice.model), device="cpu", compute_type="int8")
-        stt = SpeechToText(model, executor, initial_prompt=initial_prompt)
+        stt = SpeechToText(str(config.voice.model), executor, initial_prompt=initial_prompt)
         try:
             stream = capture.start()
         except sd.PortAudioError as e:

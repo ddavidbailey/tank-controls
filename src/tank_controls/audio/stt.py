@@ -2,27 +2,28 @@ import asyncio
 import re
 from concurrent.futures import ThreadPoolExecutor
 
+import mlx_whisper  # type: ignore[import-untyped]
 import numpy as np
-from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
 
-def _transcribe_sync(model: WhisperModel, audio: np.ndarray, initial_prompt: str) -> str:
-    segments, _ = model.transcribe(
+def _transcribe_sync(model_path: str, audio: np.ndarray, initial_prompt: str) -> str:
+    result = mlx_whisper.transcribe(
         audio,
+        path_or_hf_repo=model_path,
         initial_prompt=initial_prompt or None,
         condition_on_previous_text=False,
     )
-    return " ".join(seg.text for seg in segments)
+    return str(result.get("text", ""))
 
 
 class SpeechToText:
     def __init__(
         self,
-        model: WhisperModel,
+        model_path: str,
         executor: ThreadPoolExecutor,
         initial_prompt: str = "",
     ) -> None:
-        self._model = model
+        self._model_path = model_path
         self._executor = executor
         self._initial_prompt = initial_prompt
 
@@ -32,6 +33,6 @@ class SpeechToText:
         )
         loop = asyncio.get_running_loop()
         text: str = await loop.run_in_executor(
-            self._executor, _transcribe_sync, self._model, audio, self._initial_prompt
+            self._executor, _transcribe_sync, self._model_path, audio, self._initial_prompt
         )
         return re.sub(r"[^\w\s]", "", text).lower().strip()

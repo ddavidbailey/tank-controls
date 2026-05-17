@@ -21,4 +21,4 @@ sys.modules["pynput.keyboard"] = pynput_mock.keyboard
 
 # Mock sounddevice and faster_whisper at import time to avoid hardware requirements.
 sys.modules["sounddevice"] = MagicMock()
-sys.modules["faster_whisper"] = MagicMock()
+sys.modules["mlx_whisper"] = MagicMock()
