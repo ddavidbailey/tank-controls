@@ -11,7 +11,6 @@ def _transcribe_sync(model: WhisperModel, audio: np.ndarray, initial_prompt: str
         audio,
         initial_prompt=initial_prompt or None,
         condition_on_previous_text=False,
-        vad_filter=True,
     )
     return " ".join(seg.text for seg in segments)
 

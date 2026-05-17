@@ -1,20 +1,44 @@
-_WINDOW_FRAMES = 75  # 1.5 seconds at 20ms per frame (16kHz, 320 samples each)
+import logging
+
+import webrtcvad  # type: ignore[import-untyped]
+
+logger = logging.getLogger(__name__)
+
+_SAMPLE_RATE = 16000
+_SILENCE_THRESHOLD = 8  # consecutive silent frames before utterance is finalised (160 ms)
 
 
 class VoiceActivityDetector:
-    """Accumulates raw audio frames into 1.5-second chunks for STT.
-
-    Speech detection is delegated to Silero VAD inside faster-whisper's
-    transcribe() — this stage just batches frames at a fixed cadence.
-    """
-
-    def __init__(self) -> None:
+    def __init__(self, aggressiveness: int) -> None:
+        self._vad = webrtcvad.Vad(aggressiveness)
         self._buffer: list[bytes] = []
+        self._silence_count = 0
+        self._in_speech = False
 
     def process_frame(self, frame: bytes) -> list[bytes] | None:
+        try:
+            is_speech = self._vad.is_speech(frame, _SAMPLE_RATE)
+        except Exception:
+            logger.warning("webrtcvad rejected frame (wrong size?), discarding")
+            return None
+
+        if is_speech:
+            self._in_speech = True
+            self._silence_count = 0
+            self._buffer.append(frame)
+            return None
+
+        if not self._in_speech:
+            return None
+
         self._buffer.append(frame)
-        if len(self._buffer) >= _WINDOW_FRAMES:
-            chunk = list(self._buffer)
+        self._silence_count += 1
+
+        if self._silence_count >= _SILENCE_THRESHOLD:
+            utterance = list(self._buffer)
             self._buffer = []
-            return chunk
+            self._silence_count = 0
+            self._in_speech = False
+            return utterance
+
         return None

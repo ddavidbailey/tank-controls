@@ -5,6 +5,8 @@ description = "Multimodal War Thunder controls via voice and hand gestures"
 requires-python = ">=3.11"
 dependencies = [
     "faster-whisper",
+    "webrtcvad",
+    "setuptools<71",
     "mediapipe",
     "opencv-python",
     "sounddevice",
