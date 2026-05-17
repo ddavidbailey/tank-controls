@@ -76,13 +76,14 @@ async def _run_pipeline(config: Config, dry_run: bool) -> None:
     speech_queue: asyncio.Queue[list[bytes]] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
     intent_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
 
-    vad = VoiceActivityDetector(config.voice.vad_aggressiveness)
+    vad = VoiceActivityDetector()
     loop = asyncio.get_running_loop()
     capture = AudioCapture(raw_queue, loop)
+    initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        model = WhisperModel(config.voice.model, device="cpu", compute_type="int8")
-        stt = SpeechToText(model, executor)
+        model = WhisperModel(str(config.voice.model), device="cpu", compute_type="int8")
+        stt = SpeechToText(model, executor, initial_prompt=initial_prompt)
         try:
             stream = capture.start()
         except sd.PortAudioError as e:

@@ -6,18 +6,33 @@ import numpy as np
 from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
 
-def _transcribe_sync(model: WhisperModel, audio: np.ndarray) -> str:
-    segments, _ = model.transcribe(audio)
+def _transcribe_sync(model: WhisperModel, audio: np.ndarray, initial_prompt: str) -> str:
+    segments, _ = model.transcribe(
+        audio,
+        initial_prompt=initial_prompt or None,
+        condition_on_previous_text=False,
+        vad_filter=True,
+    )
     return " ".join(seg.text for seg in segments)
 
 
 class SpeechToText:
-    def __init__(self, model: WhisperModel, executor: ThreadPoolExecutor) -> None:
+    def __init__(
+        self,
+        model: WhisperModel,
+        executor: ThreadPoolExecutor,
+        initial_prompt: str = "",
+    ) -> None:
         self._model = model
         self._executor = executor
+        self._initial_prompt = initial_prompt
 
     async def transcribe(self, frames: list[bytes]) -> str:
-        audio = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
+        audio = (
+            np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
+        )
         loop = asyncio.get_running_loop()
-        text: str = await loop.run_in_executor(self._executor, _transcribe_sync, self._model, audio)
+        text: str = await loop.run_in_executor(
+            self._executor, _transcribe_sync, self._model, audio, self._initial_prompt
+        )
         return re.sub(r"[^\w\s]", "", text).lower().strip()
