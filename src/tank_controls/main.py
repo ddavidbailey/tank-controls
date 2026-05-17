@@ -75,7 +75,7 @@ async def _run_pipeline(config: Config, dry_run: bool) -> None:
     speech_queue: asyncio.Queue[list[bytes]] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
     intent_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
 
-    vad = VoiceActivityDetector(config.voice.vad_aggressiveness)
+    vad = VoiceActivityDetector(config.voice.energy_threshold)
     loop = asyncio.get_running_loop()
     capture = AudioCapture(raw_queue, loop)
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)

@@ -19,7 +19,7 @@ _MOUSE_VALID_VALUES: frozenset[str] = frozenset({"relative"})
 
 @dataclass
 class VoiceConfig:
-    vad_aggressiveness: int = 2
+    energy_threshold: float = 300.0
     match_threshold: float = 0.8
     action_cooldown_ms: int = 200
     model: str = "mlx-community/whisper-tiny.en-mlx"
@@ -56,7 +56,7 @@ def load_config(path: Path) -> Config:
 
     voice_raw: dict[str, Any] = data.get("voice", {})
     voice = VoiceConfig(
-        vad_aggressiveness=int(voice_raw.get("vad_aggressiveness", 2)),
+        energy_threshold=float(voice_raw.get("energy_threshold", 300.0)),
         match_threshold=float(voice_raw.get("match_threshold", 0.8)),
         action_cooldown_ms=int(voice_raw.get("action_cooldown_ms", 200)),
         model=str(voice_raw.get("model", "mlx-community/whisper-tiny.en-mlx")),
