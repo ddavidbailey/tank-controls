@@ -14,6 +14,7 @@ except ImportError:
     pass
 sys.modules["pynput"] = pynput_mock
 sys.modules["pynput.keyboard"] = pynput_mock.keyboard
+sys.modules["pynput.mouse"] = pynput_mock.mouse
 
 # Mock sounddevice and faster_whisper at import time to avoid hardware requirements.
 sys.modules["sounddevice"] = MagicMock()
