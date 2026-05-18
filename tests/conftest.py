@@ -19,3 +19,7 @@ sys.modules["pynput.mouse"] = pynput_mock.mouse
 # Mock sounddevice and faster_whisper at import time to avoid hardware requirements.
 sys.modules["sounddevice"] = MagicMock()
 sys.modules["mlx_whisper"] = MagicMock()
+
+# Mock cv2 and mediapipe at import time to avoid hardware requirements.
+sys.modules["cv2"] = MagicMock()
+sys.modules["mediapipe"] = MagicMock()
