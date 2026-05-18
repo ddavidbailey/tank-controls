@@ -62,6 +62,7 @@ class FrameCapture:
                     continue
                 consecutive_failures = 0
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_rgb = cv2.flip(frame_rgb, 1)
                 self._loop.call_soon_threadsafe(self._put_frame, frame_rgb)
         finally:
             cap.release()
