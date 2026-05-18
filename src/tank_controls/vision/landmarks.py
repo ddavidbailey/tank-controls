@@ -28,14 +28,17 @@ class HandLandmarker:
         left_wrist: tuple[float, float] | None = None
         right_wrist: tuple[float, float] | None = None
 
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
+        if results.multi_hand_landmarks and results.multi_handedness:
+            for hand_landmarks, handedness in zip(
+                results.multi_hand_landmarks, results.multi_handedness
+            ):
+                label = handedness.classification[0].label  # "Left" or "Right"
                 wrist = hand_landmarks.landmark[0]
-                # Assign by frame position: left half = drive, right half = turret
-                if wrist.x < 0.5:
-                    left_wrist = (float(wrist.x), float(wrist.y))
+                coords = (float(wrist.x), float(wrist.y))
+                if label == "Left":
+                    left_wrist = coords
                 else:
-                    right_wrist = (float(wrist.x), float(wrist.y))
+                    right_wrist = coords
 
         return HandState(left_wrist=left_wrist, right_wrist=right_wrist)
 

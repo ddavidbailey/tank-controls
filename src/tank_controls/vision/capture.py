@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import threading
+import time
 from typing import Any
 
 import cv2
@@ -47,11 +48,19 @@ class FrameCapture:
             pass  # drop stale frame; fresh frames are always preferred
 
     def _capture_loop(self, cap: cv2.VideoCapture) -> None:
+        consecutive_failures = 0
         try:
             while self._running:
                 ret, frame = cap.read()
                 if not ret:
+                    consecutive_failures += 1
+                    if consecutive_failures == 10:
+                        logger.warning(
+                            "Camera read failed repeatedly — check connection or permissions."
+                        )
+                    time.sleep(0.01)
                     continue
+                consecutive_failures = 0
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 self._loop.call_soon_threadsafe(self._put_frame, frame_rgb)
         finally:

@@ -75,6 +75,15 @@ async def _dry_run_stage(intent_queue: asyncio.Queue[tuple[str, str]]) -> None:
         log_action(action_name, "press", binding)
 
 
+async def _dry_run_gesture_stage(gesture_queue: asyncio.Queue[GestureState]) -> None:
+    while True:
+        state = await gesture_queue.get()
+        if state.hold_actions:
+            logging.info("[DRY-RUN] gesture: hold %s", sorted(state.hold_actions))
+        if state.mouse_delta != (0, 0):
+            logging.info("[DRY-RUN] gesture: mouse_move %s", state.mouse_delta)
+
+
 async def _vision_stage(
     frame_queue: asyncio.Queue[Any],
     gesture_queue: asyncio.Queue[GestureState],
@@ -138,6 +147,11 @@ async def _run_pipeline(config: Config, dry_run: bool) -> None:
                 if dry_run
                 else _hid_stage(intent_queue, KeyPresser(config.voice.action_cooldown_ms))
             )
+            gesture_hid_coro = (
+                _dry_run_gesture_stage(gesture_queue)
+                if dry_run
+                else _gesture_hid_stage(gesture_queue, gesture_hid)
+            )
             await asyncio.gather(
                 _vad_stage(raw_queue, speech_queue, vad),
                 _stt_stage(
@@ -145,7 +159,7 @@ async def _run_pipeline(config: Config, dry_run: bool) -> None:
                 ),
                 hid_coro,
                 _vision_stage(frame_queue, gesture_queue, landmarker, config.vision),
-                _gesture_hid_stage(gesture_queue, gesture_hid),
+                gesture_hid_coro,
             )
         finally:
             stream.stop()
