@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tank_controls.hid.panic import PanicGate
 
@@ -53,3 +53,19 @@ def test_on_toggle_called_with_false_on_resume() -> None:
     on_toggle.reset_mock()
     gate._on_hotkey()
     on_toggle.assert_called_once_with(False)
+
+
+def test_stop_before_start_does_not_raise() -> None:
+    gate, _, _ = _make_gate()
+    gate.stop()  # should not raise
+
+
+def test_start_stop_with_mock_listener() -> None:
+    gate, _, _ = _make_gate()
+    mock_listener = MagicMock()
+    with patch("tank_controls.hid.panic.GlobalHotKeys", return_value=mock_listener):
+        gate.start()
+        gate.stop()
+    mock_listener.start.assert_called_once()
+    mock_listener.stop.assert_called_once()
+    mock_listener.join.assert_called_once()

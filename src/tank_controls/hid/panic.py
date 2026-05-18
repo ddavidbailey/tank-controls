@@ -14,8 +14,11 @@ class PanicGate:
         self._release_fn = release_fn
         self._on_toggle = on_toggle
         self._listener: GlobalHotKeys | None = None
+        self._lock = threading.Lock()
 
     def start(self) -> None:
+        if self._listener is not None:
+            return
         self._listener = GlobalHotKeys({"<shift>+`": self._on_hotkey})
         self._listener.start()
 
@@ -29,10 +32,13 @@ class PanicGate:
         return self._paused.is_set()
 
     def _on_hotkey(self) -> None:
-        if self._paused.is_set():
-            self._paused.clear()
-            self._on_toggle(False)
-        else:
-            self._paused.set()
+        with self._lock:
+            if self._paused.is_set():
+                self._paused.clear()
+                toggled_to = False
+            else:
+                self._paused.set()
+                toggled_to = True
+        if toggled_to:
             self._release_fn()
-            self._on_toggle(True)
+        self._on_toggle(toggled_to)
