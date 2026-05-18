@@ -17,9 +17,11 @@ from tank_controls.audio.vad import VoiceActivityDetector
 from tank_controls.config.errors import ConfigError
 from tank_controls.config.loader import Config, VisionConfig, load_config
 from tank_controls.hid.dry_run import log_action
+from tank_controls.hid.feedback import FeedbackEmitter
 from tank_controls.hid.output import KeyPresser
+from tank_controls.hid.panic import PanicGate
 from tank_controls.vision.capture import FrameCapture
-from tank_controls.vision.debug import draw_debug_overlay
+from tank_controls.vision.debug import draw_debug_overlay, draw_overlay_feedback
 from tank_controls.vision.gesture import GestureState, compute_gesture
 from tank_controls.vision.hid import GestureHID
 from tank_controls.vision.landmarks import HandLandmarker
@@ -66,10 +68,11 @@ async def _stt_stage(
 async def _hid_stage(
     intent_queue: asyncio.Queue[tuple[str, str]],
     presser: KeyPresser,
+    gate: "PanicGate | None" = None,
 ) -> None:
     while True:
         action_name, binding = await intent_queue.get()
-        presser.press(action_name, binding)
+        presser.press(action_name, binding, gate)
 
 
 async def _dry_run_stage(intent_queue: asyncio.Queue[tuple[str, str]]) -> None:
@@ -93,6 +96,8 @@ async def _vision_stage(
     landmarker: HandLandmarker,
     vision_config: VisionConfig,
     display_queue: "_tq.Queue[Any] | None" = None,
+    overlay_queue: "_tq.Queue[Any] | None" = None,
+    gate: "PanicGate | None" = None,
 ) -> None:
     while True:
         frame = await frame_queue.get()
@@ -111,21 +116,37 @@ async def _vision_stage(
                 display_queue.put_nowait(bgr)
             except _tq.Full:
                 pass
+        if overlay_queue is not None:
+            import cv2
+
+            paused = gate.is_paused() if gate is not None else False
+            overlay = draw_overlay_feedback(frame, vision_config, paused)
+            bgr = cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR)
+            try:
+                overlay_queue.put_nowait(bgr)
+            except _tq.Full:
+                pass
 
 
 async def _gesture_hid_stage(
     gesture_queue: asyncio.Queue[GestureState],
     hid: GestureHID,
+    gate: "PanicGate | None" = None,
 ) -> None:
     while True:
         state = await gesture_queue.get()
-        hid.apply(state)
+        if gate is not None and gate.is_paused():
+            hid.release_all()
+        else:
+            hid.apply(state)
 
 
 async def _run_pipeline(
     config: Config,
     dry_run: bool,
     display_queue: "_tq.Queue[Any] | None" = None,
+    overlay_queue: "_tq.Queue[Any] | None" = None,
+    feedback: "FeedbackEmitter | None" = None,
 ) -> None:
     # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
@@ -141,13 +162,19 @@ async def _run_pipeline(
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
     cam_capture = FrameCapture(frame_queue, loop, config.vision)
-    gesture_hid = GestureHID(config.hold)
+    gesture_hid = GestureHID(config.hold, feedback=feedback)
+    gate = PanicGate(
+        release_fn=gesture_hid.release_all,
+        on_toggle=feedback.emit_toggle if feedback is not None else lambda _: None,
+    )
 
     try:
         cam_capture.start()
     except RuntimeError as e:
         logging.error("Could not open camera: %s", e)
         sys.exit(1)
+
+    gate.start()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         stt = SpeechToText(str(config.voice.model), executor, initial_prompt=initial_prompt)
@@ -157,17 +184,18 @@ async def _run_pipeline(
         except sd.PortAudioError as e:
             logging.error("Could not open microphone: %s", e)
             cam_capture.stop()
+            gate.stop()
             sys.exit(1)
         try:
             hid_coro = (
                 _dry_run_stage(intent_queue)
                 if dry_run
-                else _hid_stage(intent_queue, KeyPresser(config.voice.action_cooldown_ms))
+                else _hid_stage(intent_queue, KeyPresser(config.voice.action_cooldown_ms), gate)
             )
             gesture_hid_coro = (
                 _dry_run_gesture_stage(gesture_queue)
                 if dry_run
-                else _gesture_hid_stage(gesture_queue, gesture_hid)
+                else _gesture_hid_stage(gesture_queue, gesture_hid, gate)
             )
             await asyncio.gather(
                 _vad_stage(raw_queue, speech_queue, vad),
@@ -175,7 +203,10 @@ async def _run_pipeline(
                     speech_queue, intent_queue, stt, config.press, config.voice.match_threshold
                 ),
                 hid_coro,
-                _vision_stage(frame_queue, gesture_queue, landmarker, config.vision, display_queue),
+                _vision_stage(
+                    frame_queue, gesture_queue, landmarker, config.vision,
+                    display_queue, overlay_queue, gate,
+                ),
                 gesture_hid_coro,
             )
         finally:
@@ -184,6 +215,7 @@ async def _run_pipeline(
             cam_capture.stop()
             landmarker.close()
             gesture_hid.release_all()
+            gate.stop()
 
 
 def main() -> None:
@@ -202,7 +234,17 @@ def main() -> None:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Show camera feed with quadrant zone overlay",
+        help="Show camera feed with full diagnostic overlay",
+    )
+    parser.add_argument(
+        "--log-feedback",
+        action="store_true",
+        help="Log pause/resume and drive action changes to the terminal",
+    )
+    parser.add_argument(
+        "--overlay-feedback",
+        action="store_true",
+        help="Show camera window with zone overlay and LIVE/PAUSED status",
     )
     args = parser.parse_args()
 
@@ -220,15 +262,34 @@ def main() -> None:
         ", ".join(k.replace("_", " ") for k in config.press),
     )
 
-    if args.debug:
+    needs_display = args.debug or args.overlay_feedback
+
+    overlay_q: _tq.Queue[Any] | None = (
+        _tq.Queue(maxsize=2) if args.overlay_feedback else None
+    )
+    emitter: FeedbackEmitter | None = (
+        FeedbackEmitter(log=args.log_feedback, display_queue=overlay_q)
+        if (args.log_feedback or args.overlay_feedback)
+        else None
+    )
+
+    if needs_display:
         import cv2
 
-        display_q: _tq.Queue[Any] = _tq.Queue(maxsize=2)
+        debug_q: _tq.Queue[Any] = _tq.Queue(maxsize=2)
         exc_holder: list[BaseException] = []
 
         def _run_in_thread() -> None:
             try:
-                asyncio.run(_run_pipeline(config, args.dry_run, display_q))
+                asyncio.run(
+                    _run_pipeline(
+                        config,
+                        args.dry_run,
+                        display_queue=debug_q if args.debug else None,
+                        overlay_queue=overlay_q,
+                        feedback=emitter,
+                    )
+                )
             except KeyboardInterrupt:
                 pass
             except Exception as exc:
@@ -237,15 +298,26 @@ def main() -> None:
         t = threading.Thread(target=_run_in_thread, daemon=True)
         t.start()
 
-        cv2.namedWindow("Tank Controls — Vision Debug", cv2.WINDOW_AUTOSIZE)
+        if args.debug:
+            cv2.namedWindow("Tank Controls — Debug", cv2.WINDOW_AUTOSIZE)
+        if args.overlay_feedback:
+            cv2.namedWindow("Tank Controls — Overlay", cv2.WINDOW_AUTOSIZE)
+
         try:
             while t.is_alive():
-                try:
-                    bgr = display_q.get_nowait()
-                    cv2.imshow("Tank Controls — Vision Debug", bgr)
-                except _tq.Empty:
-                    pass
-                if cv2.waitKey(16) == 27:  # ESC quits
+                if args.debug:
+                    try:
+                        bgr = debug_q.get_nowait()
+                        cv2.imshow("Tank Controls — Debug", bgr)
+                    except _tq.Empty:
+                        pass
+                if args.overlay_feedback and overlay_q is not None:
+                    try:
+                        bgr = overlay_q.get_nowait()
+                        cv2.imshow("Tank Controls — Overlay", bgr)
+                    except _tq.Empty:
+                        pass
+                if cv2.waitKey(16) == 27:  # ESC
                     break
         except KeyboardInterrupt:
             logging.info("Stopped.")
@@ -258,7 +330,9 @@ def main() -> None:
             sys.exit(1)
     else:
         try:
-            asyncio.run(_run_pipeline(config, args.dry_run))
+            asyncio.run(
+                _run_pipeline(config, args.dry_run, feedback=emitter)
+            )
         except KeyboardInterrupt:
             logging.info("Stopped.")
         except Exception as e:
