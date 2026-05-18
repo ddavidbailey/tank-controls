@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+import queue as _tq
+from typing import TYPE_CHECKING, Any
 
 from pynput.keyboard import Controller as KeyboardController  # type: ignore[import-untyped]
 from pynput.mouse import Controller as MouseController  # type: ignore[import-untyped]
@@ -20,12 +21,23 @@ class GestureHID:
         self,
         hold_bindings: dict[str, str],
         feedback: "FeedbackEmitter | None" = None,
+        dispatch_q: "_tq.Queue[Any] | None" = None,
     ) -> None:
         self._keyboard = KeyboardController()
         self._mouse = MouseController()
         self._hold_bindings = hold_bindings
         self._held: set[str] = set()
         self._feedback = feedback
+        self._dispatch_q = dispatch_q
+
+    def _run(self, fn: Any) -> None:
+        if self._dispatch_q is not None:
+            try:
+                self._dispatch_q.put_nowait(fn)
+            except _tq.Full:
+                pass
+        else:
+            fn()
 
     def apply(self, state: GestureState) -> None:
         prev_held = set(self._held)
@@ -38,10 +50,12 @@ class GestureHID:
 
         dx, dy = state.mouse_delta
         if dx != 0 or dy != 0:
-            try:
-                self._mouse.move(dx, dy)
-            except Exception:
-                logger.warning("Mouse move failed — check Accessibility in System Settings.")
+            def do_move(x: int = dx, y: int = dy) -> None:
+                try:
+                    self._mouse.move(x, y)
+                except Exception:
+                    logger.warning("Mouse move failed — check Accessibility in System Settings.")
+            self._run(do_move)
 
         if self._feedback is not None and self._held != prev_held:
             self._feedback.emit_gesture(state)
@@ -56,23 +70,31 @@ class GestureHID:
         if not binding:
             return
         modifiers, key = parse_binding(binding)
-        try:
-            for mod in modifiers:
-                self._keyboard.press(mod)
-            self._keyboard.press(key)
-        except Exception:
-            logger.warning(
-                "Key press failed for '%s' — check Accessibility in System Settings.", binding
-            )
+
+        def do_press() -> None:
+            try:
+                for mod in modifiers:
+                    self._keyboard.press(mod)
+                self._keyboard.press(key)
+            except Exception:
+                logger.warning(
+                    "Key press failed for '%s' — check Accessibility in System Settings.", binding
+                )
+
+        self._run(do_press)
 
     def _release(self, action: str) -> None:
         binding = self._hold_bindings.get(action, "")
         if not binding:
             return
         modifiers, key = parse_binding(binding)
-        try:
-            self._keyboard.release(key)
-            for mod in reversed(modifiers):
-                self._keyboard.release(mod)
-        except Exception:
-            logger.warning("Key release failed for '%s'.", binding)
+
+        def do_release() -> None:
+            try:
+                self._keyboard.release(key)
+                for mod in reversed(modifiers):
+                    self._keyboard.release(mod)
+            except Exception:
+                logger.warning("Key release failed for '%s'.", binding)
+
+        self._run(do_release)

@@ -148,6 +148,7 @@ async def _run_pipeline(
     overlay_queue: "_tq.Queue[Any] | None" = None,
     feedback: "FeedbackEmitter | None" = None,
     gate: "PanicGate | None" = None,
+    dispatch_q: "_tq.Queue[Any] | None" = None,
 ) -> None:
     # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
@@ -163,7 +164,7 @@ async def _run_pipeline(
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
     cam_capture = FrameCapture(frame_queue, loop, config.vision)
-    gesture_hid = GestureHID(config.hold, feedback=feedback)
+    gesture_hid = GestureHID(config.hold, feedback=feedback, dispatch_q=dispatch_q)
 
     # gate may be pre-created and started from the main thread (when display is
     # active) to satisfy macOS's requirement that GlobalHotKeys runs on the main
@@ -205,7 +206,11 @@ async def _run_pipeline(
             hid_coro = (
                 _dry_run_stage(intent_queue)
                 if dry_run
-                else _hid_stage(intent_queue, KeyPresser(config.voice.action_cooldown_ms), gate)
+                else _hid_stage(
+                    intent_queue,
+                    KeyPresser(config.voice.action_cooldown_ms, dispatch_q=dispatch_q),
+                    gate,
+                )
             )
             gesture_hid_coro = (
                 _dry_run_gesture_stage(gesture_queue)
@@ -292,6 +297,9 @@ def main() -> None:
         import cv2
 
         debug_q: _tq.Queue[Any] | None = _tq.Queue(maxsize=2) if args.debug else None
+        # pynput TSM APIs require the macOS main dispatch queue — operations are
+        # queued here and drained on the main thread between cv2 frames.
+        pynput_q: _tq.Queue[Any] = _tq.Queue(maxsize=64)
         exc_holder: list[BaseException] = []
 
         # GlobalHotKeys requires the macOS main-thread run loop — create and
@@ -312,6 +320,7 @@ def main() -> None:
                         overlay_queue=overlay_q,
                         feedback=emitter,
                         gate=display_gate,
+                        dispatch_q=pynput_q,
                     )
                 )
             except KeyboardInterrupt:
@@ -329,6 +338,12 @@ def main() -> None:
 
         try:
             while t.is_alive():
+                # Drain pynput ops — TSM requires the main dispatch queue
+                while True:
+                    try:
+                        pynput_q.get_nowait()()
+                    except _tq.Empty:
+                        break
                 if args.debug and debug_q is not None:
                     try:
                         bgr = debug_q.get_nowait()
