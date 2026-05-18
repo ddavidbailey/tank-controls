@@ -167,7 +167,7 @@ async def _run_pipeline(config: Config, dry_run: bool, debug: bool = False) -> N
                     speech_queue, intent_queue, stt, config.press, config.voice.match_threshold
                 ),
                 hid_coro,
-                _vision_stage(frame_queue, gesture_queue, landmarker, config.vision),
+                _vision_stage(frame_queue, gesture_queue, landmarker, config.vision, debug),
                 gesture_hid_coro,
             )
         finally:
