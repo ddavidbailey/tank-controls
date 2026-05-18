@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from pynput.keyboard import Controller as KeyboardController  # type: ignore[import-untyped]
 from pynput.keyboard import Key
 from pynput.mouse import Controller as MouseController  # type: ignore[import-untyped]
 
 from tank_controls.vision.gesture import GestureState
+
+if TYPE_CHECKING:
+    from tank_controls.hid.feedback import FeedbackEmitter
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +37,20 @@ def _parse_binding(binding: str) -> tuple[list[Key], Key | str]:
 
 
 class GestureHID:
-    def __init__(self, hold_bindings: dict[str, str]) -> None:
+    def __init__(
+        self,
+        hold_bindings: dict[str, str],
+        feedback: "FeedbackEmitter | None" = None,
+    ) -> None:
         self._keyboard = KeyboardController()
         self._mouse = MouseController()
         self._hold_bindings = hold_bindings
         self._held: set[str] = set()
+        self._feedback = feedback
 
     def apply(self, state: GestureState) -> None:
+        prev_held = set(self._held)
+
         for action in self._held - state.hold_actions:
             self._release(action)
         for action in state.hold_actions - self._held:
@@ -50,6 +63,9 @@ class GestureHID:
                 self._mouse.move(dx, dy)
             except Exception:
                 logger.warning("Mouse move failed — check Accessibility in System Settings.")
+
+        if self._feedback is not None and self._held != prev_held:
+            self._feedback.emit_gesture(state)
 
     def release_all(self) -> None:
         for action in list(self._held):

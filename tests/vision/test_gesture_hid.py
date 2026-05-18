@@ -59,3 +59,33 @@ def test_release_all_releases_held_keys() -> None:
         hid.apply(GestureState(hold_actions={"throttle_up"}, mouse_delta=(0, 0)))
         hid.release_all()
         kbd.release.assert_called_with("w")
+
+
+def test_feedback_emitted_on_hold_actions_change() -> None:
+    from unittest.mock import MagicMock
+
+    feedback = MagicMock()
+    with (
+        patch("tank_controls.vision.hid.KeyboardController"),
+        patch("tank_controls.vision.hid.MouseController"),
+    ):
+        hid = GestureHID(hold_bindings={"throttle_up": "w"}, feedback=feedback)
+        state = GestureState(hold_actions={"throttle_up"}, mouse_delta=(0, 0))
+        hid.apply(state)
+    feedback.emit_gesture.assert_called_once_with(state)
+
+
+def test_feedback_not_emitted_when_actions_unchanged() -> None:
+    from unittest.mock import MagicMock
+
+    feedback = MagicMock()
+    with (
+        patch("tank_controls.vision.hid.KeyboardController"),
+        patch("tank_controls.vision.hid.MouseController"),
+    ):
+        hid = GestureHID(hold_bindings={"throttle_up": "w"}, feedback=feedback)
+        state = GestureState(hold_actions={"throttle_up"}, mouse_delta=(0, 0))
+        hid.apply(state)
+        feedback.reset_mock()
+        hid.apply(state)  # same hold_actions — no change
+    feedback.emit_gesture.assert_not_called()
