@@ -58,6 +58,15 @@ def test_emit_gesture_pushes_to_queue() -> None:
     assert msg == {"state": state}  # type: ignore[comparison-overlap]
 
 
+def test_emit_gesture_pushes_to_queue_when_empty() -> None:
+    q: _tq.Queue[object] = _tq.Queue()
+    emitter = FeedbackEmitter(log=False, display_queue=q)
+    state = GestureState(hold_actions=set())
+    emitter.emit_gesture(state)
+    msg = q.get_nowait()
+    assert msg == {"state": state}  # type: ignore[comparison-overlap]
+
+
 def test_queue_full_does_not_raise() -> None:
     q: _tq.Queue[object] = _tq.Queue(maxsize=1)
     q.put_nowait({"paused": True})
