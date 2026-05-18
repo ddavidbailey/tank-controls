@@ -1,6 +1,7 @@
 import logging
 
-from pynput.keyboard import Controller as KeyboardController, Key  # type: ignore[import-untyped]
+from pynput.keyboard import Controller as KeyboardController  # type: ignore[import-untyped]
+from pynput.keyboard import Key
 from pynput.mouse import Controller as MouseController  # type: ignore[import-untyped]
 
 from tank_controls.vision.gesture import GestureState
@@ -48,9 +49,7 @@ class GestureHID:
             try:
                 self._mouse.move(dx, dy)
             except Exception:
-                logger.warning(
-                    "Mouse move failed — check Accessibility in System Settings."
-                )
+                logger.warning("Mouse move failed — check Accessibility in System Settings.")
 
     def release_all(self) -> None:
         for action in list(self._held):

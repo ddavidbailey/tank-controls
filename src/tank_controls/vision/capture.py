@@ -32,9 +32,7 @@ class FrameCapture:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._config.frame_height)
         cap.set(cv2.CAP_PROP_FPS, self._config.fps)
         self._running = True
-        self._thread = threading.Thread(
-            target=self._capture_loop, args=(cap,), daemon=True
-        )
+        self._thread = threading.Thread(target=self._capture_loop, args=(cap,), daemon=True)
         self._thread.start()
 
     def stop(self) -> None:

@@ -4,6 +4,7 @@ import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 import sounddevice as sd  # type: ignore[import-untyped]
 
@@ -12,9 +13,13 @@ from tank_controls.audio.intent import match_intent
 from tank_controls.audio.stt import SpeechToText
 from tank_controls.audio.vad import VoiceActivityDetector
 from tank_controls.config.errors import ConfigError
-from tank_controls.config.loader import Config, load_config
+from tank_controls.config.loader import Config, VisionConfig, load_config
 from tank_controls.hid.dry_run import log_action
 from tank_controls.hid.output import KeyPresser
+from tank_controls.vision.capture import FrameCapture
+from tank_controls.vision.gesture import GestureState, compute_gesture
+from tank_controls.vision.hid import GestureHID
+from tank_controls.vision.landmarks import HandLandmarker
 
 _QUEUE_DEPTH = 5
 
@@ -70,22 +75,62 @@ async def _dry_run_stage(intent_queue: asyncio.Queue[tuple[str, str]]) -> None:
         log_action(action_name, "press", binding)
 
 
+async def _vision_stage(
+    frame_queue: asyncio.Queue[Any],
+    gesture_queue: asyncio.Queue[GestureState],
+    landmarker: HandLandmarker,
+    vision_config: VisionConfig,
+) -> None:
+    while True:
+        frame = await frame_queue.get()
+        hand_state = await landmarker.detect(frame)
+        state = compute_gesture(hand_state, vision_config)
+        try:
+            gesture_queue.put_nowait(state)
+        except asyncio.QueueFull:
+            pass
+
+
+async def _gesture_hid_stage(
+    gesture_queue: asyncio.Queue[GestureState],
+    hid: GestureHID,
+) -> None:
+    while True:
+        state = await gesture_queue.get()
+        hid.apply(state)
+
+
 async def _run_pipeline(config: Config, dry_run: bool) -> None:
+    # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
     speech_queue: asyncio.Queue[list[bytes]] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
     intent_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
+    # Vision queues
+    frame_queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=2)
+    gesture_queue: asyncio.Queue[GestureState] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
 
     vad = VoiceActivityDetector(config.voice.energy_threshold)
     loop = asyncio.get_running_loop()
-    capture = AudioCapture(raw_queue, loop)
+    audio_capture = AudioCapture(raw_queue, loop)
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
+    cam_capture = FrameCapture(frame_queue, loop, config.vision)
+    gesture_hid = GestureHID(config.hold)
+
+    try:
+        cam_capture.start()
+    except RuntimeError as e:
+        logging.error("Could not open camera: %s", e)
+        sys.exit(1)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
         stt = SpeechToText(str(config.voice.model), executor, initial_prompt=initial_prompt)
+        landmarker = HandLandmarker(executor)
         try:
-            stream = capture.start()
+            stream = audio_capture.start()
         except sd.PortAudioError as e:
             logging.error("Could not open microphone: %s", e)
+            cam_capture.stop()
             sys.exit(1)
         try:
             hid_coro = (
@@ -99,10 +144,15 @@ async def _run_pipeline(config: Config, dry_run: bool) -> None:
                     speech_queue, intent_queue, stt, config.press, config.voice.match_threshold
                 ),
                 hid_coro,
+                _vision_stage(frame_queue, gesture_queue, landmarker, config.vision),
+                _gesture_hid_stage(gesture_queue, gesture_hid),
             )
         finally:
             stream.stop()
             stream.close()
+            cam_capture.stop()
+            landmarker.close()
+            gesture_hid.release_all()
 
 
 def main() -> None:
@@ -116,7 +166,7 @@ def main() -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Log recognised actions instead of sending keypresses",
+        help="Log recognised voice actions instead of sending keypresses",
     )
     args = parser.parse_args()
 
