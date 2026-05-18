@@ -28,6 +28,9 @@ class PanicGate:
             self._listener.join(timeout=1.0)
             self._listener = None
 
+    def set_release_fn(self, fn: Callable[[], None]) -> None:
+        self._release_fn = fn
+
     def is_paused(self) -> bool:
         return self._paused.is_set()
 

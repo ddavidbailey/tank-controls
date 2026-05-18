@@ -147,6 +147,7 @@ async def _run_pipeline(
     display_queue: "_tq.Queue[Any] | None" = None,
     overlay_queue: "_tq.Queue[Any] | None" = None,
     feedback: "FeedbackEmitter | None" = None,
+    gate: "PanicGate | None" = None,
 ) -> None:
     # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
@@ -163,10 +164,23 @@ async def _run_pipeline(
 
     cam_capture = FrameCapture(frame_queue, loop, config.vision)
     gesture_hid = GestureHID(config.hold, feedback=feedback)
-    gate = PanicGate(
-        release_fn=gesture_hid.release_all,
-        on_toggle=feedback.emit_toggle if feedback is not None else lambda _: None,
-    )
+
+    # gate may be pre-created and started from the main thread (when display is
+    # active) to satisfy macOS's requirement that GlobalHotKeys runs on the main
+    # thread.  If not provided, create and start it here (asyncio is on the main
+    # thread in the non-display path).
+    if gate is None:
+        gate = PanicGate(
+            release_fn=gesture_hid.release_all,
+            on_toggle=feedback.emit_toggle if feedback is not None else lambda _: None,
+        )
+        start_gate = True
+    else:
+        gate.set_release_fn(gesture_hid.release_all)
+        start_gate = False
+
+    # gate is always a PanicGate from here on
+    assert gate is not None
 
     try:
         cam_capture.start()
@@ -174,7 +188,8 @@ async def _run_pipeline(
         logging.error("Could not open camera: %s", e)
         sys.exit(1)
 
-    gate.start()
+    if start_gate:
+        gate.start()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         stt = SpeechToText(str(config.voice.model), executor, initial_prompt=initial_prompt)
@@ -279,6 +294,14 @@ def main() -> None:
         debug_q: _tq.Queue[Any] | None = _tq.Queue(maxsize=2) if args.debug else None
         exc_holder: list[BaseException] = []
 
+        # GlobalHotKeys requires the macOS main-thread run loop — create and
+        # start the gate here before launching the asyncio daemon thread.
+        display_gate = PanicGate(
+            release_fn=lambda: None,  # replaced by _run_pipeline once gesture_hid exists
+            on_toggle=emitter.emit_toggle if emitter is not None else lambda _: None,
+        )
+        display_gate.start()
+
         def _run_in_thread() -> None:
             try:
                 asyncio.run(
@@ -288,6 +311,7 @@ def main() -> None:
                         display_queue=debug_q,
                         overlay_queue=overlay_q,
                         feedback=emitter,
+                        gate=display_gate,
                     )
                 )
             except KeyboardInterrupt:
@@ -323,6 +347,7 @@ def main() -> None:
             logging.info("Stopped.")
         finally:
             cv2.destroyAllWindows()
+            display_gate.stop()
 
         t.join(timeout=2.0)
         if exc_holder:
