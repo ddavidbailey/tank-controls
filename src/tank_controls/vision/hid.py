@@ -4,36 +4,15 @@ import logging
 from typing import TYPE_CHECKING
 
 from pynput.keyboard import Controller as KeyboardController  # type: ignore[import-untyped]
-from pynput.keyboard import Key
 from pynput.mouse import Controller as MouseController  # type: ignore[import-untyped]
 
+from tank_controls.hid._keys import parse_binding
 from tank_controls.vision.gesture import GestureState
 
 if TYPE_CHECKING:
     from tank_controls.hid.feedback import FeedbackEmitter
 
 logger = logging.getLogger(__name__)
-
-_MODIFIER_MAP: dict[str, Key] = {
-    "ctrl": Key.ctrl,
-    "alt": Key.alt,
-    "shift": Key.shift,
-}
-
-_SPECIAL_KEY_MAP: dict[str, Key] = {
-    "space": Key.space,
-    "enter": Key.enter,
-    "tab": Key.tab,
-    "escape": Key.esc,
-    **{f"f{i}": getattr(Key, f"f{i}") for i in range(1, 13)},
-}
-
-
-def _parse_binding(binding: str) -> tuple[list[Key], Key | str]:
-    parts = binding.split("+")
-    modifiers = [_MODIFIER_MAP[p] for p in parts[:-1] if p in _MODIFIER_MAP]
-    key_str = parts[-1]
-    return modifiers, _SPECIAL_KEY_MAP.get(key_str, key_str)
 
 
 class GestureHID:
@@ -76,7 +55,7 @@ class GestureHID:
         binding = self._hold_bindings.get(action, "")
         if not binding:
             return
-        modifiers, key = _parse_binding(binding)
+        modifiers, key = parse_binding(binding)
         try:
             for mod in modifiers:
                 self._keyboard.press(mod)
@@ -90,7 +69,7 @@ class GestureHID:
         binding = self._hold_bindings.get(action, "")
         if not binding:
             return
-        modifiers, key = _parse_binding(binding)
+        modifiers, key = parse_binding(binding)
         try:
             self._keyboard.release(key)
             for mod in reversed(modifiers):

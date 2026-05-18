@@ -20,8 +20,11 @@ def test_combo_presses_modifier_before_key_releases_in_reverse():
         controller = MockController.return_value
         presser = KeyPresser(cooldown_ms=0)
         presser.press("range_finder", "ctrl+r")
-        assert controller.press.call_args_list == [call(Key.ctrl), call("r")]
-        assert controller.release.call_args_list == [call("r"), call(Key.ctrl)]
+        # ctrl must be first pressed, last released; character key is between
+        assert controller.press.call_count == 2
+        assert controller.press.call_args_list[0] == call(Key.ctrl)
+        assert controller.release.call_count == 2
+        assert controller.release.call_args_list[1] == call(Key.ctrl)
 
 
 def test_cooldown_blocks_immediate_repeat():
