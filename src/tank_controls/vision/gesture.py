@@ -29,7 +29,7 @@ def _compute_drive(
     if wrist is None:
         return set()
 
-    dx = wrist[0] - 0.75
+    dx = wrist[0] - 0.25
     dy = wrist[1] - 0.5  # negative = up in image coords
     t = config.quadrant_threshold
 
@@ -53,7 +53,7 @@ def _compute_turret(
     if wrist is None:
         return (0, 0)
 
-    dx_raw = wrist[0] - 0.25
+    dx_raw = wrist[0] - 0.75
     dy_raw = wrist[1] - 0.5
     t = config.quadrant_threshold
 
