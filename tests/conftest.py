@@ -20,6 +20,10 @@ sys.modules["pynput.mouse"] = pynput_mock.mouse
 sys.modules["sounddevice"] = MagicMock()
 sys.modules["mlx_whisper"] = MagicMock()
 
-# Mock cv2 and mediapipe at import time to avoid hardware requirements.
+# Mock cv2 and mediapipe (including Tasks API submodules) to avoid hardware requirements.
 sys.modules["cv2"] = MagicMock()
-sys.modules["mediapipe"] = MagicMock()
+mediapipe_mock = MagicMock()
+sys.modules["mediapipe"] = mediapipe_mock
+sys.modules["mediapipe.tasks"] = mediapipe_mock.tasks
+sys.modules["mediapipe.tasks.python"] = mediapipe_mock.tasks.python
+sys.modules["mediapipe.tasks.python.vision"] = mediapipe_mock.tasks.python.vision
