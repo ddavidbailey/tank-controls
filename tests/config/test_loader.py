@@ -8,7 +8,7 @@ from tank_controls.config.errors import (
     EmptyKeybindError,
     InvalidKeybindError,
 )
-from tank_controls.config.loader import load_config
+from tank_controls.config.loader import VisionConfig, load_config
 
 
 def test_load_full_config(tmp_path: Path) -> None:
@@ -153,3 +153,27 @@ def test_voice_config_values_parsed(tmp_path: Path) -> None:
     assert config.voice.energy_threshold == 500.0
     assert config.voice.match_threshold == 0.9
     assert config.voice.action_cooldown_ms == 150
+
+
+def test_vision_config_defaults_when_section_absent(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('[profile]\nname = "test"\n')
+    config = load_config(cfg)
+    assert config.vision.camera_index == 0
+    assert config.vision.frame_width == 640
+    assert config.vision.frame_height == 480
+    assert config.vision.fps == 30
+    assert config.vision.quadrant_threshold == 0.1
+    assert config.vision.max_mouse_speed == 15
+
+
+def test_vision_config_values_parsed(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        '[profile]\nname = "test"\n'
+        "[vision]\ncamera_index = 1\nquadrant_threshold = 0.15\nmax_mouse_speed = 20\n"
+    )
+    config = load_config(cfg)
+    assert config.vision.camera_index == 1
+    assert config.vision.quadrant_threshold == 0.15
+    assert config.vision.max_mouse_speed == 20
