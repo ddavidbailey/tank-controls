@@ -149,6 +149,8 @@ async def _run_pipeline(
     feedback: "FeedbackEmitter | None" = None,
     gate: "PanicGate | None" = None,
     dispatch_q: "_tq.Queue[Any] | None" = None,
+    gesture_hid: "GestureHID | None" = None,
+    presser: "KeyPresser | None" = None,
 ) -> None:
     # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
@@ -164,7 +166,8 @@ async def _run_pipeline(
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
     cam_capture = FrameCapture(frame_queue, loop, config.vision)
-    gesture_hid = GestureHID(config.hold, feedback=feedback, dispatch_q=dispatch_q)
+    if gesture_hid is None:
+        gesture_hid = GestureHID(config.hold, feedback=feedback, dispatch_q=dispatch_q)
 
     # gate may be pre-created and started from the main thread (when display is
     # active) to satisfy macOS's requirement that GlobalHotKeys runs on the main
@@ -208,7 +211,7 @@ async def _run_pipeline(
                 if dry_run
                 else _hid_stage(
                     intent_queue,
-                    KeyPresser(config.voice.action_cooldown_ms, dispatch_q=dispatch_q),
+                    presser or KeyPresser(config.voice.action_cooldown_ms, dispatch_q=dispatch_q),
                     gate,
                 )
             )
@@ -302,10 +305,14 @@ def main() -> None:
         pynput_q: _tq.Queue[Any] = _tq.Queue(maxsize=64)
         exc_holder: list[BaseException] = []
 
-        # GlobalHotKeys requires the macOS main-thread run loop — create and
-        # start the gate here before launching the asyncio daemon thread.
+        # pynput Controller constructors also call TSM — create all pynput
+        # objects here on the main thread before the asyncio thread starts.
+        main_gesture_hid = GestureHID(config.hold, feedback=emitter, dispatch_q=pynput_q)
+        main_presser = KeyPresser(config.voice.action_cooldown_ms, dispatch_q=pynput_q)
+
+        # GlobalHotKeys requires the macOS main-thread run loop.
         display_gate = PanicGate(
-            release_fn=lambda: None,  # replaced by _run_pipeline once gesture_hid exists
+            release_fn=main_gesture_hid.release_all,
             on_toggle=emitter.emit_toggle if emitter is not None else lambda _: None,
         )
         display_gate.start()
@@ -321,6 +328,8 @@ def main() -> None:
                         feedback=emitter,
                         gate=display_gate,
                         dispatch_q=pynput_q,
+                        gesture_hid=main_gesture_hid,
+                        presser=main_presser,
                     )
                 )
             except KeyboardInterrupt:
