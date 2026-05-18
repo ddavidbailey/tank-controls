@@ -58,3 +58,25 @@ def test_cooldown_is_independent_per_action():
         presser.press("fire", "space")
         result = presser.press("range_finder", "ctrl+r")  # different action, no cooldown
         assert result is True
+
+
+def test_press_blocked_when_gate_paused() -> None:
+    from unittest.mock import MagicMock
+
+    gate = MagicMock()
+    gate.is_paused.return_value = True
+    with patch("tank_controls.hid.output.Controller"):
+        presser = KeyPresser(cooldown_ms=0)
+        result = presser.press("fire", "space", gate=gate)
+    assert result is False
+
+
+def test_press_allowed_when_gate_live() -> None:
+    from unittest.mock import MagicMock
+
+    gate = MagicMock()
+    gate.is_paused.return_value = False
+    with patch("tank_controls.hid.output.Controller"):
+        presser = KeyPresser(cooldown_ms=0)
+        result = presser.press("fire", "space", gate=gate)
+    assert result is True
