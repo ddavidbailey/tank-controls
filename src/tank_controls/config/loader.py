@@ -25,6 +25,7 @@ class VisionConfig:
     fps: int = 30
     quadrant_threshold: float = 0.07
     max_mouse_speed: int = 15
+    mouse_accel_exponent: float = 0.5
 
 
 @dataclass
@@ -80,6 +81,7 @@ def load_config(path: Path) -> Config:
         fps=int(vision_raw.get("fps", 30)),
         quadrant_threshold=float(vision_raw.get("quadrant_threshold", 0.07)),
         max_mouse_speed=int(vision_raw.get("max_mouse_speed", 15)),
+        mouse_accel_exponent=float(vision_raw.get("mouse_accel_exponent", 0.5)),
     )
     return Config(
         profile_name=profile_name,
