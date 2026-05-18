@@ -23,7 +23,7 @@ class VisionConfig:
     frame_width: int = 640
     frame_height: int = 480
     fps: int = 30
-    quadrant_threshold: float = 0.1
+    quadrant_threshold: float = 0.07
     max_mouse_speed: int = 15
 
 
@@ -78,7 +78,7 @@ def load_config(path: Path) -> Config:
         frame_width=int(vision_raw.get("frame_width", 640)),
         frame_height=int(vision_raw.get("frame_height", 480)),
         fps=int(vision_raw.get("fps", 30)),
-        quadrant_threshold=float(vision_raw.get("quadrant_threshold", 0.1)),
+        quadrant_threshold=float(vision_raw.get("quadrant_threshold", 0.07)),
         max_mouse_speed=int(vision_raw.get("max_mouse_speed", 15)),
     )
     return Config(

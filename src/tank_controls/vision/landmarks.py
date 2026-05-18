@@ -55,8 +55,8 @@ class HandLandmarker:
             if i >= len(result.handedness):
                 continue
             label = result.handedness[i][0].category_name  # "Left" or "Right"
-            wrist = landmarks[0]  # landmark 0 = wrist
-            coords = (float(wrist.x), float(wrist.y))
+            palm = landmarks[9]  # landmark 9 = middle-finger MCP (palm centre)
+            coords = (float(palm.x), float(palm.y))
             if label == "Left":
                 left_wrist = coords
             else:

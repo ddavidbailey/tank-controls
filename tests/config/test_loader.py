@@ -163,7 +163,7 @@ def test_vision_config_defaults_when_section_absent(tmp_path: Path) -> None:
     assert config.vision.frame_width == 640
     assert config.vision.frame_height == 480
     assert config.vision.fps == 30
-    assert config.vision.quadrant_threshold == 0.1
+    assert config.vision.quadrant_threshold == 0.07
     assert config.vision.max_mouse_speed == 15
 
 
