@@ -19,7 +19,7 @@ class PanicGate:
     def start(self) -> None:
         if self._listener is not None:
             return
-        self._listener = GlobalHotKeys({"<shift>+`": self._on_hotkey})
+        self._listener = GlobalHotKeys({"=": self._on_hotkey})
         self._listener.start()
 
     def stop(self) -> None:
