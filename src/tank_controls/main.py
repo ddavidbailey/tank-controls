@@ -17,6 +17,7 @@ from tank_controls.config.loader import Config, VisionConfig, load_config
 from tank_controls.hid.dry_run import log_action
 from tank_controls.hid.output import KeyPresser
 from tank_controls.vision.capture import FrameCapture
+from tank_controls.vision.debug import draw_debug_overlay
 from tank_controls.vision.gesture import GestureState, compute_gesture
 from tank_controls.vision.hid import GestureHID
 from tank_controls.vision.landmarks import HandLandmarker
@@ -89,7 +90,10 @@ async def _vision_stage(
     gesture_queue: asyncio.Queue[GestureState],
     landmarker: HandLandmarker,
     vision_config: VisionConfig,
+    debug: bool = False,
 ) -> None:
+    import cv2
+
     while True:
         frame = await frame_queue.get()
         hand_state = await landmarker.detect(frame)
@@ -98,6 +102,11 @@ async def _vision_stage(
             gesture_queue.put_nowait(state)
         except asyncio.QueueFull:
             pass
+        if debug:
+            overlay = draw_debug_overlay(frame, hand_state, state, vision_config)
+            bgr = cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR)
+            cv2.imshow("Tank Controls — Vision Debug", bgr)
+            cv2.waitKey(1)
 
 
 async def _gesture_hid_stage(
@@ -109,7 +118,7 @@ async def _gesture_hid_stage(
         hid.apply(state)
 
 
-async def _run_pipeline(config: Config, dry_run: bool) -> None:
+async def _run_pipeline(config: Config, dry_run: bool, debug: bool = False) -> None:
     # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
     speech_queue: asyncio.Queue[list[bytes]] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
@@ -182,6 +191,11 @@ def main() -> None:
         action="store_true",
         help="Log recognised voice actions instead of sending keypresses",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show camera feed with quadrant zone overlay",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -199,7 +213,7 @@ def main() -> None:
     )
 
     try:
-        asyncio.run(_run_pipeline(config, args.dry_run))
+        asyncio.run(_run_pipeline(config, args.dry_run, args.debug))
     except KeyboardInterrupt:
         logging.info("Stopped.")
     except Exception as e:
