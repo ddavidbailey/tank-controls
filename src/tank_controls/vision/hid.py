@@ -27,6 +27,7 @@ class GestureHID:
         self._mouse = MouseController()
         self._hold_bindings = hold_bindings
         self._held: set[str] = set()
+        self._turret_active: bool = False
         self._feedback = feedback
         self._dispatch_q = dispatch_q
 
@@ -57,8 +58,12 @@ class GestureHID:
                     logger.warning("Mouse move failed — check Accessibility in System Settings.")
             self._run(do_move)
 
-        if self._feedback is not None and self._held != prev_held:
-            self._feedback.emit_gesture(state)
+        turret_now = state.mouse_delta != (0, 0)
+        hold_changed = self._held != prev_held
+        turret_changed = turret_now != self._turret_active
+        self._turret_active = turret_now
+        if self._feedback is not None and (hold_changed or turret_changed):
+            self._feedback.emit_gesture(state, turret_active=turret_now)
 
     def release_all(self) -> None:
         for action in list(self._held):

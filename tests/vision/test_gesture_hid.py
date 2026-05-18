@@ -72,7 +72,7 @@ def test_feedback_emitted_on_hold_actions_change() -> None:
         hid = GestureHID(hold_bindings={"throttle_up": "w"}, feedback=feedback)
         state = GestureState(hold_actions={"throttle_up"}, mouse_delta=(0, 0))
         hid.apply(state)
-    feedback.emit_gesture.assert_called_once_with(state)
+    feedback.emit_gesture.assert_called_once_with(state, turret_active=False)
 
 
 def test_feedback_not_emitted_when_actions_unchanged() -> None:

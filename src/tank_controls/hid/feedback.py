@@ -25,9 +25,13 @@ class FeedbackEmitter:
             except _tq.Full:
                 pass
 
-    def emit_gesture(self, state: GestureState) -> None:
-        if self._log and state.hold_actions:
-            logger.info("Drive: %s", " + ".join(sorted(state.hold_actions)))
+    def emit_gesture(self, state: GestureState, turret_active: bool = False) -> None:
+        if self._log:
+            if state.hold_actions:
+                logger.info("Drive: %s", " + ".join(sorted(state.hold_actions)))
+            if turret_active:
+                dx, dy = state.mouse_delta
+                logger.info("Turret: dx=%+d dy=%+d", dx, dy)
         if self._display_queue is not None:
             try:
                 self._display_queue.put_nowait({"state": state})
