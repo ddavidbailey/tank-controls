@@ -292,7 +292,7 @@ def main() -> None:
                 )
             except KeyboardInterrupt:
                 pass
-            except Exception as exc:
+            except BaseException as exc:
                 exc_holder.append(exc)
 
         t = threading.Thread(target=_run_in_thread, daemon=True)
