@@ -44,24 +44,27 @@ Passing `gate=None` (the default) preserves existing behaviour exactly — no te
 
 ### Status HUD overlay
 
-When `--overlay-feedback` is active alongside `--debug`, three status lines are rendered into the existing camera debug window by `draw_debug_overlay`:
+`--overlay-feedback` opens its own camera window showing:
+- The full zone overlay (same quadrant lines and labels as `--debug`)
+- A `● LIVE` (green) / `● PAUSED` (red) indicator in the top-right corner
 
-```
-● LIVE          (green)  /  ● PAUSED       (red)   — top-right corner
-Drive: W + D             (green, or blank)           — below zone labels
-Turret: dx=+5 dy=-2      (orange, or blank)          — below drive line
-```
+It is independent of `--debug`. Both flags can be used together, producing two separate windows.
 
-No separate window is created. If `--debug` is not active, `--overlay-feedback` has no visible effect — use `--log-feedback` for terminal-only output in that case.
+`--debug` remains unchanged — it shows the full diagnostic view: zone lines, wrist tracking circles, and active action labels. It does not show the LIVE/PAUSED indicator.
+
+| Flag | Zone overlay | LIVE/PAUSED | Wrist circles | Active action labels |
+|------|-------------|-------------|---------------|----------------------|
+| `--overlay-feedback` | ✓ | ✓ | ✗ | ✗ |
+| `--debug` | ✓ | ✗ | ✓ | ✓ |
 
 ## CLI
 
 ```
 --log-feedback      Emit INFO logs on pause/resume and drive action changes
---overlay-feedback  Add LIVE/PAUSED status and active actions to the --debug window
+--overlay-feedback  Open camera window with zone overlay and LIVE/PAUSED status
 ```
 
-Both flags are optional and combinable. `--overlay-feedback` without `--debug` has no visible effect — pair them together for the full visual experience.
+Both flags are optional and combinable with each other and with `--debug`.
 
 ## Data Flow
 
@@ -83,8 +86,8 @@ _hid_stage (asyncio)
        └─ returns early if paused
 
 main() display loop (main thread)
-  └─ debug_queue → cv2.imshow camera window     # if --debug
-       └─ draw_debug_overlay receives paused/state # if --overlay-feedback also set
+  ├─ debug_queue   → cv2.imshow "Tank Controls — Debug" window    # if --debug
+  └─ overlay_queue → cv2.imshow "Tank Controls — Overlay" window  # if --overlay-feedback
 ```
 
 ## File Changes
@@ -95,8 +98,8 @@ main() display loop (main thread)
 | `src/tank_controls/hid/feedback.py` | New — `FeedbackEmitter` |
 | `src/tank_controls/hid/output.py` | Add optional `gate` param to `KeyPresser.press()` |
 | `src/tank_controls/vision/hid.py` | Add optional `gate` param to `GestureHID.__init__` and `apply()` |
-| `src/tank_controls/vision/debug.py` | Add optional `paused: bool` param to `draw_debug_overlay` |
-| `src/tank_controls/main.py` | New flags, wire gate + emitter, pass paused state into overlay |
+| `src/tank_controls/vision/debug.py` | Add `draw_overlay_feedback(frame, config, paused) -> np.ndarray` |
+| `src/tank_controls/main.py` | New flags, wire gate + emitter, second display queue for overlay window |
 | `tests/hid/test_panic.py` | New — PanicGate unit tests |
 | `tests/hid/test_feedback.py` | New — FeedbackEmitter unit tests |
 
