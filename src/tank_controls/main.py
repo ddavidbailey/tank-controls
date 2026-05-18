@@ -268,7 +268,7 @@ def main() -> None:
         _tq.Queue(maxsize=2) if args.overlay_feedback else None
     )
     emitter: FeedbackEmitter | None = (
-        FeedbackEmitter(log=args.log_feedback, display_queue=overlay_q)
+        FeedbackEmitter(log=args.log_feedback, display_queue=None)
         if (args.log_feedback or args.overlay_feedback)
         else None
     )
@@ -276,7 +276,7 @@ def main() -> None:
     if needs_display:
         import cv2
 
-        debug_q: _tq.Queue[Any] = _tq.Queue(maxsize=2)
+        debug_q: _tq.Queue[Any] | None = _tq.Queue(maxsize=2) if args.debug else None
         exc_holder: list[BaseException] = []
 
         def _run_in_thread() -> None:
@@ -285,7 +285,7 @@ def main() -> None:
                     _run_pipeline(
                         config,
                         args.dry_run,
-                        display_queue=debug_q if args.debug else None,
+                        display_queue=debug_q,
                         overlay_queue=overlay_q,
                         feedback=emitter,
                     )
@@ -305,7 +305,7 @@ def main() -> None:
 
         try:
             while t.is_alive():
-                if args.debug:
+                if args.debug and debug_q is not None:
                     try:
                         bgr = debug_q.get_nowait()
                         cv2.imshow("Tank Controls — Debug", bgr)

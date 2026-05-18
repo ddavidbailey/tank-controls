@@ -1,5 +1,6 @@
 import inspect
 import logging
+import threading
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,3 +41,50 @@ def test_main_exits_on_config_error(tmp_path: Path) -> None:
         with pytest.raises(SystemExit) as exc_info:
             main()
     assert exc_info.value.code == 1
+
+
+def test_main_log_feedback_flag_exits_cleanly(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[profile]\nname = "test"\n\n[press]\nfire = "space"\n')
+
+    def close_coro(coro: object, **_: object) -> None:
+        if inspect.iscoroutine(coro):
+            coro.close()
+
+    with (
+        patch("sys.argv", ["tank-controls", "--config", str(f), "--dry-run", "--log-feedback"]),
+        patch("tank_controls.main.asyncio.run", side_effect=close_coro),
+    ):
+        main()  # should not raise
+
+
+def test_main_overlay_feedback_flag_uses_display_thread(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[profile]\nname = "test"\n\n[press]\nfire = "space"\n')
+
+    thread_started = []
+
+    original_thread = threading.Thread
+
+    def patched_thread(**kwargs: object) -> object:
+        t = original_thread(**kwargs)  # type: ignore[arg-type]
+        thread_started.append(True)
+        return t
+
+    from unittest.mock import MagicMock
+
+    mock_cv2 = MagicMock()
+    mock_cv2.waitKey.return_value = 27  # ESC immediately exits loop
+    mock_cv2.WINDOW_AUTOSIZE = 0
+
+    with (
+        patch("sys.argv", ["tank-controls", "--config", str(f), "--dry-run", "--overlay-feedback"]),
+        patch("tank_controls.main.threading.Thread", side_effect=patched_thread),
+        patch.dict("sys.modules", {"cv2": mock_cv2}),
+    ):
+        try:
+            main()
+        except Exception:
+            pass
+
+    assert thread_started, "display thread should have been started for --overlay-feedback"
