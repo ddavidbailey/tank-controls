@@ -8,7 +8,7 @@ from tank_controls.config.errors import (
     EmptyKeybindError,
     InvalidKeybindError,
 )
-from tank_controls.config.loader import VisionConfig, load_config
+from tank_controls.config.loader import load_config
 
 
 def test_load_full_config(tmp_path: Path) -> None:
