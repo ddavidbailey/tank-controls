@@ -114,7 +114,7 @@ def draw_overlay_feedback(
     _draw_zones(overlay, config)
 
     # LIVE / PAUSED indicator — top-right corner
-    status_text = "● PAUSED" if paused else "● LIVE"
+    status_text = "[ PAUSED ]" if paused else "[ LIVE ]"
     status_color = (0, 0, 200) if paused else (0, 200, 0)
     (text_w, _), _ = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.75, 2)
     cv2.putText(
