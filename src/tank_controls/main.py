@@ -17,9 +17,11 @@ from tank_controls.audio.vad import VoiceActivityDetector
 from tank_controls.config.errors import ConfigError
 from tank_controls.config.loader import Config, VisionConfig, load_config
 from tank_controls.hid.dry_run import log_action
+from tank_controls.hid.feedback import FeedbackEmitter
 from tank_controls.hid.output import KeyPresser
+from tank_controls.hid.panic import PanicGate
 from tank_controls.vision.capture import FrameCapture
-from tank_controls.vision.debug import draw_debug_overlay
+from tank_controls.vision.debug import draw_debug_overlay, draw_overlay_feedback
 from tank_controls.vision.gesture import GestureState, compute_gesture
 from tank_controls.vision.hid import GestureHID
 from tank_controls.vision.landmarks import HandLandmarker
@@ -36,6 +38,7 @@ async def _vad_stage(
         frame = await raw_queue.get()
         utterance = vad.process_frame(frame)
         if utterance is not None:
+            logging.info("VAD: speech detected (%d frames)", len(utterance))
             try:
                 speech_queue.put_nowait(utterance)
             except asyncio.QueueFull:
@@ -54,22 +57,26 @@ async def _stt_stage(
         text = await stt.transcribe(frames)
         if not text:
             continue
-        logging.debug("Transcribed: %r", text)
+        logging.info("Transcribed: %r", text)
         result = match_intent(text, press, threshold)
         if result is not None:
+            logging.info("Voice: %s → %s", result[0], result[1])
             try:
                 intent_queue.put_nowait(result)
             except asyncio.QueueFull:
                 logging.warning("intent_queue full — intent dropped")
+        else:
+            logging.info("Voice: no match for %r (threshold %.1f)", text, threshold)
 
 
 async def _hid_stage(
     intent_queue: asyncio.Queue[tuple[str, str]],
     presser: KeyPresser,
+    gate: "PanicGate | None" = None,
 ) -> None:
     while True:
         action_name, binding = await intent_queue.get()
-        presser.press(action_name, binding)
+        presser.press(action_name, binding, gate)
 
 
 async def _dry_run_stage(intent_queue: asyncio.Queue[tuple[str, str]]) -> None:
@@ -93,6 +100,8 @@ async def _vision_stage(
     landmarker: HandLandmarker,
     vision_config: VisionConfig,
     display_queue: "_tq.Queue[Any] | None" = None,
+    overlay_queue: "_tq.Queue[Any] | None" = None,
+    gate: "PanicGate | None" = None,
 ) -> None:
     while True:
         frame = await frame_queue.get()
@@ -111,21 +120,44 @@ async def _vision_stage(
                 display_queue.put_nowait(bgr)
             except _tq.Full:
                 pass
+        if overlay_queue is not None:
+            import cv2
+
+            paused = gate.is_paused() if gate is not None else False
+            overlay = draw_overlay_feedback(frame, vision_config, paused)
+            bgr = cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR)
+            try:
+                overlay_queue.put_nowait(bgr)
+            except _tq.Full:
+                pass
 
 
 async def _gesture_hid_stage(
     gesture_queue: asyncio.Queue[GestureState],
     hid: GestureHID,
+    gate: "PanicGate | None" = None,
 ) -> None:
     while True:
         state = await gesture_queue.get()
-        hid.apply(state)
+        if gate is not None and gate.is_paused():
+            hid.release_all()
+        else:
+            hid.apply(state)
 
 
 async def _run_pipeline(
     config: Config,
     dry_run: bool,
     display_queue: "_tq.Queue[Any] | None" = None,
+    overlay_queue: "_tq.Queue[Any] | None" = None,
+    feedback: "FeedbackEmitter | None" = None,
+    gate: "PanicGate | None" = None,
+    dispatch_q: "_tq.Queue[Any] | None" = None,
+    gesture_hid: "GestureHID | None" = None,
+    presser: "KeyPresser | None" = None,
+    audio_capture: "AudioCapture | None" = None,
+    stream: "sd.RawInputStream | None" = None,
+    mic_device: "int | None" = None,
 ) -> None:
     # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
@@ -137,11 +169,30 @@ async def _run_pipeline(
 
     vad = VoiceActivityDetector(config.voice.energy_threshold)
     loop = asyncio.get_running_loop()
-    audio_capture = AudioCapture(raw_queue, loop)
+    if audio_capture is None:
+        audio_capture = AudioCapture()
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
     cam_capture = FrameCapture(frame_queue, loop, config.vision)
-    gesture_hid = GestureHID(config.hold)
+    if gesture_hid is None:
+        gesture_hid = GestureHID(config.hold, feedback=feedback, dispatch_q=dispatch_q)
+
+    # gate may be pre-created and started from the main thread (when display is
+    # active) to satisfy macOS's requirement that GlobalHotKeys runs on the main
+    # thread.  If not provided, create and start it here (asyncio is on the main
+    # thread in the non-display path).
+    if gate is None:
+        gate = PanicGate(
+            release_fn=gesture_hid.release_all,
+            on_toggle=feedback.emit_toggle if feedback is not None else lambda _: None,
+        )
+        start_gate = True
+    else:
+        gate.set_release_fn(gesture_hid.release_all)
+        start_gate = False
+
+    # gate is always a PanicGate from here on
+    assert gate is not None
 
     try:
         cam_capture.start()
@@ -149,33 +200,46 @@ async def _run_pipeline(
         logging.error("Could not open camera: %s", e)
         sys.exit(1)
 
+    if start_gate:
+        gate.start()
+
     with ThreadPoolExecutor(max_workers=2) as executor:
         stt = SpeechToText(str(config.voice.model), executor, initial_prompt=initial_prompt)
         landmarker = HandLandmarker(executor)
-        try:
-            stream = audio_capture.start()
-        except sd.PortAudioError as e:
-            logging.error("Could not open microphone: %s", e)
-            cam_capture.stop()
-            sys.exit(1)
+        if stream is None:
+            try:
+                stream = audio_capture.start(device=mic_device)
+            except sd.PortAudioError as e:
+                logging.error("Could not open microphone: %s", e)
+                cam_capture.stop()
+                gate.stop()
+                sys.exit(1)
         try:
             hid_coro = (
                 _dry_run_stage(intent_queue)
                 if dry_run
-                else _hid_stage(intent_queue, KeyPresser(config.voice.action_cooldown_ms))
+                else _hid_stage(
+                    intent_queue,
+                    presser or KeyPresser(config.voice.action_cooldown_ms, dispatch_q=dispatch_q),
+                    gate,
+                )
             )
             gesture_hid_coro = (
                 _dry_run_gesture_stage(gesture_queue)
                 if dry_run
-                else _gesture_hid_stage(gesture_queue, gesture_hid)
+                else _gesture_hid_stage(gesture_queue, gesture_hid, gate)
             )
             await asyncio.gather(
+                audio_capture.pump(raw_queue),
                 _vad_stage(raw_queue, speech_queue, vad),
                 _stt_stage(
                     speech_queue, intent_queue, stt, config.press, config.voice.match_threshold
                 ),
                 hid_coro,
-                _vision_stage(frame_queue, gesture_queue, landmarker, config.vision, display_queue),
+                _vision_stage(
+                    frame_queue, gesture_queue, landmarker, config.vision,
+                    display_queue, overlay_queue, gate,
+                ),
                 gesture_hid_coro,
             )
         finally:
@@ -184,6 +248,65 @@ async def _run_pipeline(
             cam_capture.stop()
             landmarker.close()
             gesture_hid.release_all()
+            gate.stop()
+
+
+def _select_mic(mic_arg: "int | None") -> "int | None":
+    """Show an interactive microphone selection menu.
+
+    Returns a sounddevice device index, or None to use the system default.
+    If mic_arg is already set (via --mic), it is returned immediately.
+    """
+    if mic_arg is not None:
+        return mic_arg
+
+    try:
+        devices = sd.query_devices()
+        inputs = [
+            (idx, dev)
+            for idx, dev in enumerate(devices)
+            if dev.get("max_input_channels", 0) > 0
+        ]
+    except Exception:
+        return None
+
+    if not inputs:
+        logging.warning("No input devices found — using system default.")
+        return None
+
+    try:
+        default_idx = int(sd.default.device[0])
+    except Exception:
+        default_idx = inputs[0][0]
+
+    default_menu_n = next(
+        (n for n, (idx, _) in enumerate(inputs, 1) if idx == default_idx), 1
+    )
+
+    print("\nAvailable microphones:")
+    for n, (idx, dev) in enumerate(inputs, 1):
+        marker = "  ← default" if idx == default_idx else ""
+        print(f"  {n}. {dev['name']}{marker}")
+    print()
+
+    while True:
+        try:
+            raw = input(f"Select microphone [{default_menu_n}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return default_idx
+
+        if not raw:
+            return default_idx
+
+        try:
+            choice = int(raw)
+            if 1 <= choice <= len(inputs):
+                return inputs[choice - 1][0]
+        except ValueError:
+            pass
+
+        print(f"  Enter a number between 1 and {len(inputs)}.")
 
 
 def main() -> None:
@@ -202,7 +325,24 @@ def main() -> None:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Show camera feed with quadrant zone overlay",
+        help="Show camera feed with full diagnostic overlay",
+    )
+    parser.add_argument(
+        "--log-feedback",
+        action="store_true",
+        help="Log pause/resume and drive action changes to the terminal",
+    )
+    parser.add_argument(
+        "--overlay-feedback",
+        action="store_true",
+        help="Show camera window with zone overlay and LIVE/PAUSED status",
+    )
+    parser.add_argument(
+        "--mic",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Use microphone device index N directly (skips interactive selection)",
     )
     args = parser.parse_args()
 
@@ -220,37 +360,107 @@ def main() -> None:
         ", ".join(k.replace("_", " ") for k in config.press),
     )
 
-    if args.debug:
+    mic_device = _select_mic(args.mic)
+
+    needs_display = args.debug or args.overlay_feedback
+
+    overlay_q: _tq.Queue[Any] | None = (
+        _tq.Queue(maxsize=2) if args.overlay_feedback else None
+    )
+    emitter: FeedbackEmitter | None = (
+        FeedbackEmitter(log=args.log_feedback, display_queue=None)
+        if (args.log_feedback or args.overlay_feedback)
+        else None
+    )
+
+    if needs_display:
         import cv2
 
-        display_q: _tq.Queue[Any] = _tq.Queue(maxsize=2)
+        debug_q: _tq.Queue[Any] | None = _tq.Queue(maxsize=2) if args.debug else None
+        # pynput TSM APIs require the macOS main dispatch queue — operations are
+        # queued here and drained on the main thread between cv2 frames.
+        pynput_q: _tq.Queue[Any] = _tq.Queue(maxsize=64)
         exc_holder: list[BaseException] = []
+
+        # pynput Controller constructors also call TSM — create all pynput
+        # objects here on the main thread before the asyncio thread starts.
+        main_gesture_hid = GestureHID(config.hold, feedback=emitter, dispatch_q=pynput_q)
+        main_presser = KeyPresser(config.voice.action_cooldown_ms, dispatch_q=pynput_q)
+
+        # GlobalHotKeys requires the macOS main-thread run loop.
+        display_gate = PanicGate(
+            release_fn=main_gesture_hid.release_all,
+            on_toggle=emitter.emit_toggle if emitter is not None else lambda _: None,
+        )
+        display_gate.start()
+
+        # CoreAudio (sounddevice backend) needs to be started from a thread
+        # with an active macOS run loop — that's the main thread.
+        main_audio = AudioCapture()
+        try:
+            main_stream = main_audio.start(device=mic_device)
+        except sd.PortAudioError as e:
+            logging.error("Could not open microphone: %s", e)
+            display_gate.stop()
+            sys.exit(1)
 
         def _run_in_thread() -> None:
             try:
-                asyncio.run(_run_pipeline(config, args.dry_run, display_q))
+                asyncio.run(
+                    _run_pipeline(
+                        config,
+                        args.dry_run,
+                        display_queue=debug_q,
+                        overlay_queue=overlay_q,
+                        feedback=emitter,
+                        gate=display_gate,
+                        dispatch_q=pynput_q,
+                        gesture_hid=main_gesture_hid,
+                        presser=main_presser,
+                        audio_capture=main_audio,
+                        stream=main_stream,
+                    )
+                )
             except KeyboardInterrupt:
                 pass
-            except Exception as exc:
+            except BaseException as exc:
                 exc_holder.append(exc)
 
         t = threading.Thread(target=_run_in_thread, daemon=True)
         t.start()
 
-        cv2.namedWindow("Tank Controls — Vision Debug", cv2.WINDOW_AUTOSIZE)
+        if args.debug:
+            cv2.namedWindow("Tank Controls — Debug", cv2.WINDOW_AUTOSIZE)
+        if args.overlay_feedback:
+            cv2.namedWindow("Tank Controls — Overlay", cv2.WINDOW_AUTOSIZE)
+
         try:
             while t.is_alive():
-                try:
-                    bgr = display_q.get_nowait()
-                    cv2.imshow("Tank Controls — Vision Debug", bgr)
-                except _tq.Empty:
-                    pass
-                if cv2.waitKey(16) == 27:  # ESC quits
+                # Drain pynput ops — TSM requires the main dispatch queue
+                while True:
+                    try:
+                        pynput_q.get_nowait()()
+                    except _tq.Empty:
+                        break
+                if args.debug and debug_q is not None:
+                    try:
+                        bgr = debug_q.get_nowait()
+                        cv2.imshow("Tank Controls — Debug", bgr)
+                    except _tq.Empty:
+                        pass
+                if args.overlay_feedback and overlay_q is not None:
+                    try:
+                        bgr = overlay_q.get_nowait()
+                        cv2.imshow("Tank Controls — Overlay", bgr)
+                    except _tq.Empty:
+                        pass
+                if cv2.waitKey(16) == 27:  # ESC
                     break
         except KeyboardInterrupt:
             logging.info("Stopped.")
         finally:
             cv2.destroyAllWindows()
+            display_gate.stop()
 
         t.join(timeout=2.0)
         if exc_holder:
@@ -258,7 +468,9 @@ def main() -> None:
             sys.exit(1)
     else:
         try:
-            asyncio.run(_run_pipeline(config, args.dry_run))
+            asyncio.run(
+                _run_pipeline(config, args.dry_run, feedback=emitter, mic_device=mic_device)
+            )
         except KeyboardInterrupt:
             logging.info("Stopped.")
         except Exception as e:

@@ -11,7 +11,7 @@ from tank_controls.config.errors import (
     InvalidKeybindError,
 )
 
-_VALID_KEY = r"(?:[a-z0-9]|space|enter|tab|escape|f(?:[1-9]|1[0-2]))"
+_VALID_KEY = r"(?:[a-z0-9]|space|enter|tab|escape|cmd|f(?:[1-9]|1[0-2])|mouse[123])"
 _VALID_MODIFIER = r"(?:ctrl|alt|shift)"
 _BINDING_RE = re.compile(rf"^(?:{_VALID_MODIFIER}\+)*{_VALID_KEY}$")
 _MOUSE_VALID_VALUES: frozenset[str] = frozenset({"relative"})
@@ -25,6 +25,7 @@ class VisionConfig:
     fps: int = 30
     quadrant_threshold: float = 0.07
     max_mouse_speed: int = 15
+    mouse_accel_exponent: float = 0.5
 
 
 @dataclass
@@ -80,6 +81,7 @@ def load_config(path: Path) -> Config:
         fps=int(vision_raw.get("fps", 30)),
         quadrant_threshold=float(vision_raw.get("quadrant_threshold", 0.07)),
         max_mouse_speed=int(vision_raw.get("max_mouse_speed", 15)),
+        mouse_accel_exponent=float(vision_raw.get("mouse_accel_exponent", 0.5)),
     )
     return Config(
         profile_name=profile_name,

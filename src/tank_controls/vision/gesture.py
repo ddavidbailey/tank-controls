@@ -57,7 +57,11 @@ def _compute_turret(
     dy_raw = wrist[1] - 0.5
     t = config.quadrant_threshold
 
-    mouse_x = 0 if abs(dx_raw) < t else int((dx_raw / 0.5) * config.max_mouse_speed)
-    mouse_y = 0 if abs(dy_raw) < t else int((dy_raw / 0.5) * config.max_mouse_speed)
+    def _axis(val: float) -> int:
+        if abs(val) < t:
+            return 0
+        sign = 1.0 if val > 0 else -1.0
+        norm = min((abs(val) - t) / (0.5 - t), 1.0)
+        return int(sign * (norm ** config.mouse_accel_exponent) * config.max_mouse_speed)
 
-    return (mouse_x, mouse_y)
+    return (_axis(dx_raw), _axis(dy_raw))

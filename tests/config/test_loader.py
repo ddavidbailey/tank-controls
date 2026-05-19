@@ -112,6 +112,24 @@ def test_valid_mouse_relative_accepted(tmp_path: Path) -> None:
     assert load_config(f).mouse == {"turret_traverse": "relative"}
 
 
+def test_cmd_binding_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nrange_finder = "cmd"\n')
+    assert load_config(f).press == {"range_finder": "cmd"}
+
+
+def test_mouse_button_binding_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nfire = "mouse1"\n')
+    assert load_config(f).press == {"fire": "mouse1"}
+
+
+def test_mouse_button_2_and_3_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nfire = "mouse2"\nalt_fire = "mouse3"\n')
+    assert load_config(f).press == {"fire": "mouse2", "alt_fire": "mouse3"}
+
+
 def test_cross_section_duplicate_raises(tmp_path: Path) -> None:
     f = tmp_path / "config.toml"
     f.write_text('[press]\nfire = "space"\n\n[hold]\nthrottle_up = "space"\n')

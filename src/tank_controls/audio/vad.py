@@ -1,6 +1,7 @@
 import numpy as np
 
-_SILENCE_THRESHOLD = 8  # consecutive silent frames before utterance is finalised (160 ms)
+_SILENCE_THRESHOLD = 8   # consecutive silent frames before utterance is finalised (160 ms)
+_MIN_SPEECH_FRAMES = 10  # minimum speech frames required before sending to STT (200 ms)
 
 
 class VoiceActivityDetector:
@@ -8,13 +9,15 @@ class VoiceActivityDetector:
 
     Compares the RMS amplitude of each 20ms frame against energy_threshold.
     Accumulates speech frames and emits a complete utterance after 8 consecutive
-    silent frames (160 ms of trailing silence).
+    silent frames (160 ms of trailing silence), provided at least 200 ms of
+    actual speech was detected (guards against noise bursts triggering Whisper).
     """
 
     def __init__(self, energy_threshold: float = 300.0) -> None:
         self._threshold = energy_threshold
         self._buffer: list[bytes] = []
         self._silence_count = 0
+        self._speech_count = 0
         self._in_speech = False
 
     def process_frame(self, frame: bytes) -> list[bytes] | None:
@@ -25,6 +28,7 @@ class VoiceActivityDetector:
         if is_speech:
             self._in_speech = True
             self._silence_count = 0
+            self._speech_count += 1
             self._buffer.append(frame)
             return None
 
@@ -35,9 +39,11 @@ class VoiceActivityDetector:
         self._silence_count += 1
 
         if self._silence_count >= _SILENCE_THRESHOLD:
-            utterance = list(self._buffer)
+            speech_count = self._speech_count
+            utterance = list(self._buffer) if speech_count >= _MIN_SPEECH_FRAMES else None
             self._buffer = []
             self._silence_count = 0
+            self._speech_count = 0
             self._in_speech = False
             return utterance
 
