@@ -38,6 +38,7 @@ async def _vad_stage(
         frame = await raw_queue.get()
         utterance = vad.process_frame(frame)
         if utterance is not None:
+            logging.info("VAD: speech detected (%d frames)", len(utterance))
             try:
                 speech_queue.put_nowait(utterance)
             except asyncio.QueueFull:
@@ -56,13 +57,16 @@ async def _stt_stage(
         text = await stt.transcribe(frames)
         if not text:
             continue
-        logging.debug("Transcribed: %r", text)
+        logging.info("Transcribed: %r", text)
         result = match_intent(text, press, threshold)
         if result is not None:
+            logging.info("Voice: %s → %s", result[0], result[1])
             try:
                 intent_queue.put_nowait(result)
             except asyncio.QueueFull:
                 logging.warning("intent_queue full — intent dropped")
+        else:
+            logging.info("Voice: no match for %r (threshold %.1f)", text, threshold)
 
 
 async def _hid_stage(
@@ -151,6 +155,9 @@ async def _run_pipeline(
     dispatch_q: "_tq.Queue[Any] | None" = None,
     gesture_hid: "GestureHID | None" = None,
     presser: "KeyPresser | None" = None,
+    audio_capture: "AudioCapture | None" = None,
+    stream: "sd.RawInputStream | None" = None,
+    mic_device: "int | None" = None,
 ) -> None:
     # Voice queues
     raw_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_DEPTH)
@@ -162,7 +169,8 @@ async def _run_pipeline(
 
     vad = VoiceActivityDetector(config.voice.energy_threshold)
     loop = asyncio.get_running_loop()
-    audio_capture = AudioCapture(raw_queue, loop)
+    if audio_capture is None:
+        audio_capture = AudioCapture()
     initial_prompt = ", ".join(k.replace("_", " ") for k in config.press)
 
     cam_capture = FrameCapture(frame_queue, loop, config.vision)
@@ -198,13 +206,14 @@ async def _run_pipeline(
     with ThreadPoolExecutor(max_workers=2) as executor:
         stt = SpeechToText(str(config.voice.model), executor, initial_prompt=initial_prompt)
         landmarker = HandLandmarker(executor)
-        try:
-            stream = audio_capture.start()
-        except sd.PortAudioError as e:
-            logging.error("Could not open microphone: %s", e)
-            cam_capture.stop()
-            gate.stop()
-            sys.exit(1)
+        if stream is None:
+            try:
+                stream = audio_capture.start(device=mic_device)
+            except sd.PortAudioError as e:
+                logging.error("Could not open microphone: %s", e)
+                cam_capture.stop()
+                gate.stop()
+                sys.exit(1)
         try:
             hid_coro = (
                 _dry_run_stage(intent_queue)
@@ -221,6 +230,7 @@ async def _run_pipeline(
                 else _gesture_hid_stage(gesture_queue, gesture_hid, gate)
             )
             await asyncio.gather(
+                audio_capture.pump(raw_queue),
                 _vad_stage(raw_queue, speech_queue, vad),
                 _stt_stage(
                     speech_queue, intent_queue, stt, config.press, config.voice.match_threshold
@@ -239,6 +249,64 @@ async def _run_pipeline(
             landmarker.close()
             gesture_hid.release_all()
             gate.stop()
+
+
+def _select_mic(mic_arg: "int | None") -> "int | None":
+    """Show an interactive microphone selection menu.
+
+    Returns a sounddevice device index, or None to use the system default.
+    If mic_arg is already set (via --mic), it is returned immediately.
+    """
+    if mic_arg is not None:
+        return mic_arg
+
+    try:
+        devices = sd.query_devices()
+        inputs = [
+            (idx, dev)
+            for idx, dev in enumerate(devices)
+            if dev.get("max_input_channels", 0) > 0
+        ]
+    except Exception:
+        return None
+
+    if not inputs:
+        logging.warning("No input devices found — using system default.")
+        return None
+
+    try:
+        default_idx = int(sd.default.device[0])
+    except Exception:
+        default_idx = inputs[0][0]
+
+    default_menu_n = next(
+        (n for n, (idx, _) in enumerate(inputs, 1) if idx == default_idx), 1
+    )
+
+    print("\nAvailable microphones:")
+    for n, (idx, dev) in enumerate(inputs, 1):
+        marker = "  ← default" if idx == default_idx else ""
+        print(f"  {n}. {dev['name']}{marker}")
+    print()
+
+    while True:
+        try:
+            raw = input(f"Select microphone [{default_menu_n}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return default_idx
+
+        if not raw:
+            return default_idx
+
+        try:
+            choice = int(raw)
+            if 1 <= choice <= len(inputs):
+                return inputs[choice - 1][0]
+        except ValueError:
+            pass
+
+        print(f"  Enter a number between 1 and {len(inputs)}.")
 
 
 def main() -> None:
@@ -269,6 +337,13 @@ def main() -> None:
         action="store_true",
         help="Show camera window with zone overlay and LIVE/PAUSED status",
     )
+    parser.add_argument(
+        "--mic",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Use microphone device index N directly (skips interactive selection)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -284,6 +359,8 @@ def main() -> None:
         "Listening for: %s",
         ", ".join(k.replace("_", " ") for k in config.press),
     )
+
+    mic_device = _select_mic(args.mic)
 
     needs_display = args.debug or args.overlay_feedback
 
@@ -317,6 +394,16 @@ def main() -> None:
         )
         display_gate.start()
 
+        # CoreAudio (sounddevice backend) needs to be started from a thread
+        # with an active macOS run loop — that's the main thread.
+        main_audio = AudioCapture()
+        try:
+            main_stream = main_audio.start(device=mic_device)
+        except sd.PortAudioError as e:
+            logging.error("Could not open microphone: %s", e)
+            display_gate.stop()
+            sys.exit(1)
+
         def _run_in_thread() -> None:
             try:
                 asyncio.run(
@@ -330,6 +417,8 @@ def main() -> None:
                         dispatch_q=pynput_q,
                         gesture_hid=main_gesture_hid,
                         presser=main_presser,
+                        audio_capture=main_audio,
+                        stream=main_stream,
                     )
                 )
             except KeyboardInterrupt:
@@ -380,7 +469,7 @@ def main() -> None:
     else:
         try:
             asyncio.run(
-                _run_pipeline(config, args.dry_run, feedback=emitter)
+                _run_pipeline(config, args.dry_run, feedback=emitter, mic_device=mic_device)
             )
         except KeyboardInterrupt:
             logging.info("Stopped.")
