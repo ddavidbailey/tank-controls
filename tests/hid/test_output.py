@@ -44,6 +44,22 @@ def test_quartz_ctrl_combo_passes_flag():
         assert args[1] & Quartz.kCGEventFlagMaskControl
 
 
+def test_quartz_shift_standalone_sets_own_flag():
+    with (
+        patch("tank_controls.hid.output.Controller"),
+        _quartz_tap() as mock_tap,
+    ):
+        presser = KeyPresser(cooldown_ms=0)
+        presser.press("scope", "shift")
+        mock_tap.assert_called_once()
+        import Quartz
+
+        args = mock_tap.call_args[0]
+        assert args[0] == 56  # kVK_Shift (left)
+        assert args[1] & Quartz.kCGEventFlagMaskShift
+        assert args[2] == 0
+
+
 def test_quartz_cmd_standalone_sets_own_flag():
     with (
         patch("tank_controls.hid.output.Controller"),

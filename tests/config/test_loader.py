@@ -118,6 +118,12 @@ def test_cmd_binding_accepted(tmp_path: Path) -> None:
     assert load_config(f).press == {"range_finder": "cmd"}
 
 
+def test_shift_binding_accepted(tmp_path: Path) -> None:
+    f = tmp_path / "config.toml"
+    f.write_text('[press]\nscope = "shift"\n')
+    assert load_config(f).press == {"scope": "shift"}
+
+
 def test_mouse_button_binding_accepted(tmp_path: Path) -> None:
     f = tmp_path / "config.toml"
     f.write_text('[press]\nfire = "mouse1"\n')

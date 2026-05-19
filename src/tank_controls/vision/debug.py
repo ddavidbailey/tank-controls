@@ -70,20 +70,20 @@ def draw_debug_overlay(
     _draw_zones(overlay, config)
 
     # Wrist tracking circles
-    if hand_state.right_wrist:
-        rx = int(hand_state.right_wrist[0] * w)
-        ry = int(hand_state.right_wrist[1] * h)
-        cv2.circle(overlay, (rx, ry), 18, _GREEN, 3)
-        cv2.putText(
-            overlay, "DRIVE", (rx + 22, ry + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, _GREEN, 2
-        )
-
     if hand_state.left_wrist:
         lx = int(hand_state.left_wrist[0] * w)
         ly = int(hand_state.left_wrist[1] * h)
-        cv2.circle(overlay, (lx, ly), 18, _ORANGE, 3)
+        cv2.circle(overlay, (lx, ly), 18, _GREEN, 3)
         cv2.putText(
-            overlay, "TURRET", (lx + 22, ly + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, _ORANGE, 2
+            overlay, "DRIVE", (lx + 22, ly + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, _GREEN, 2
+        )
+
+    if hand_state.right_wrist:
+        rx = int(hand_state.right_wrist[0] * w)
+        ry = int(hand_state.right_wrist[1] * h)
+        cv2.circle(overlay, (rx, ry), 18, _ORANGE, 3)
+        cv2.putText(
+            overlay, "TURRET", (rx + 22, ry + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, _ORANGE, 2
         )
 
     # Active action labels

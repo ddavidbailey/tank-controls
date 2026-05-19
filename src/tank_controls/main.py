@@ -430,9 +430,9 @@ def main() -> None:
         t.start()
 
         if args.debug:
-            cv2.namedWindow("Tank Controls — Debug", cv2.WINDOW_AUTOSIZE)
+            cv2.namedWindow("Tank Controls", cv2.WINDOW_AUTOSIZE)
         if args.overlay_feedback:
-            cv2.namedWindow("Tank Controls — Overlay", cv2.WINDOW_AUTOSIZE)
+            cv2.namedWindow("Tank Controls", cv2.WINDOW_AUTOSIZE)
 
         try:
             while t.is_alive():
@@ -445,13 +445,13 @@ def main() -> None:
                 if args.debug and debug_q is not None:
                     try:
                         bgr = debug_q.get_nowait()
-                        cv2.imshow("Tank Controls — Debug", bgr)
+                        cv2.imshow("Tank Controls", bgr)
                     except _tq.Empty:
                         pass
                 if args.overlay_feedback and overlay_q is not None:
                     try:
                         bgr = overlay_q.get_nowait()
-                        cv2.imshow("Tank Controls — Overlay", bgr)
+                        cv2.imshow("Tank Controls", bgr)
                     except _tq.Empty:
                         pass
                 if cv2.waitKey(16) == 27:  # ESC
