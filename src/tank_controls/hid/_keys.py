@@ -13,6 +13,7 @@ SPECIAL_KEY_MAP: dict[str, Key] = {
     "enter": Key.enter,
     "tab": Key.tab,
     "escape": Key.esc,
+    "cmd": Key.cmd,
     **{f"f{i}": getattr(Key, f"f{i}") for i in range(1, 13)},
 }
 

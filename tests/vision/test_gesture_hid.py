@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from tank_controls.vision.gesture import GestureState
 from tank_controls.vision.hid import GestureHID
@@ -30,23 +30,23 @@ def test_dropped_action_releases_key() -> None:
 def test_mouse_delta_applied() -> None:
     with (
         patch("tank_controls.vision.hid.KeyboardController"),
-        patch("tank_controls.vision.hid.MouseController") as MockMouse,
+        patch("tank_controls.vision.hid.MouseController"),
+        patch("tank_controls.vision.hid._post_mouse_move") as mock_move,
     ):
-        mouse = MockMouse.return_value
         hid = GestureHID(hold_bindings={})
         hid.apply(GestureState(hold_actions=set(), mouse_delta=(5, -3)))
-        mouse.move.assert_called_once_with(5, -3)
+        mock_move.assert_called_once_with(ANY, 5, -3)
 
 
 def test_zero_mouse_delta_not_applied() -> None:
     with (
         patch("tank_controls.vision.hid.KeyboardController"),
-        patch("tank_controls.vision.hid.MouseController") as MockMouse,
+        patch("tank_controls.vision.hid.MouseController"),
+        patch("tank_controls.vision.hid._post_mouse_move") as mock_move,
     ):
-        mouse = MockMouse.return_value
         hid = GestureHID(hold_bindings={})
         hid.apply(GestureState(hold_actions=set(), mouse_delta=(0, 0)))
-        mouse.move.assert_not_called()
+        mock_move.assert_not_called()
 
 
 def test_release_all_releases_held_keys() -> None:

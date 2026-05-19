@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import queue as _tq
+import sys
 from typing import TYPE_CHECKING, Any
 
 from pynput.keyboard import Controller as KeyboardController  # type: ignore[import-untyped]
@@ -10,10 +11,39 @@ from pynput.mouse import Controller as MouseController  # type: ignore[import-un
 from tank_controls.hid._keys import parse_binding
 from tank_controls.vision.gesture import GestureState
 
+try:
+    if sys.platform == "darwin":
+        import Quartz as _Quartz  # type: ignore[import-untyped]
+        _QUARTZ_OK = True
+    else:
+        _QUARTZ_OK = False
+except ImportError:
+    _QUARTZ_OK = False
+
 if TYPE_CHECKING:
     from tank_controls.hid.feedback import FeedbackEmitter
 
 logger = logging.getLogger(__name__)
+
+
+def _post_mouse_move(mouse: MouseController, dx: int, dy: int) -> None:
+    """Post a relative mouse move.
+
+    On macOS, CGEventCreateMouseEvent does not fill kCGMouseEventDeltaX/Y —
+    games (e.g. War Thunder) read those fields for turret control, so we set
+    them explicitly.  On other platforms pynput's move() is sufficient.
+    """
+    if _QUARTZ_OK:
+        cur = _Quartz.CGEventGetLocation(_Quartz.CGEventCreate(None))
+        pos = (cur.x + dx, cur.y + dy)
+        event = _Quartz.CGEventCreateMouseEvent(
+            None, _Quartz.kCGEventMouseMoved, pos, 0
+        )
+        _Quartz.CGEventSetIntegerValueField(event, _Quartz.kCGMouseEventDeltaX, dx)
+        _Quartz.CGEventSetIntegerValueField(event, _Quartz.kCGMouseEventDeltaY, dy)
+        _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, event)
+    else:
+        mouse.move(dx, dy)
 
 
 class GestureHID:
@@ -53,7 +83,7 @@ class GestureHID:
         if dx != 0 or dy != 0:
             def do_move(x: int = dx, y: int = dy) -> None:
                 try:
-                    self._mouse.move(x, y)
+                    _post_mouse_move(self._mouse, x, y)
                 except Exception:
                     logger.warning("Mouse move failed — check Accessibility in System Settings.")
             self._run(do_move)

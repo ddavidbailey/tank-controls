@@ -5,11 +5,13 @@ from unittest.mock import MagicMock
 # Individual tests patch tank_controls.hid.output.Controller to set side_effects.
 pynput_mock = MagicMock()
 pynput_mock.keyboard.Key = MagicMock()
-# Import Key from real module so tests can use pynput.keyboard.Key
+pynput_mock.keyboard.KeyCode = MagicMock()
+# Preserve real Key and KeyCode so tests can use them for assertions and VK lookups
 try:
-    from pynput.keyboard import Key
+    from pynput.keyboard import Key, KeyCode
 
     pynput_mock.keyboard.Key = Key
+    pynput_mock.keyboard.KeyCode = KeyCode
 except ImportError:
     pass
 sys.modules["pynput"] = pynput_mock
